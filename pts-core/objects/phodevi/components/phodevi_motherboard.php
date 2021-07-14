@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2019, Phoronix Media
-	Copyright (C) 2008 - 2019, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	phodevi_motherboard.php: The PTS Device Interface object for the motherboard
 
 	This program is free software; you can redistribute it and/or modify
@@ -31,8 +31,91 @@ class phodevi_motherboard extends phodevi_device_interface
 			'power-mode' => new phodevi_device_property('power_mode', phodevi::smart_caching),
 			'pci-devices' => new phodevi_device_property('pci_devices', phodevi::smart_caching),
 			'bios-version' => new phodevi_device_property('bios_version', phodevi::smart_caching),
-			'usb-devices' => new phodevi_device_property('usb_devices', phodevi::std_caching)
+			'secure-boot' => new phodevi_device_property('secure_boot', phodevi::smart_caching),
+			'boot-mode' => new phodevi_device_property('boot_mode', phodevi::smart_caching),
+			'tpm-devices' => new phodevi_device_property('tpm_devices', phodevi::smart_caching),
+			'usb-devices' => new phodevi_device_property('usb_devices', phodevi::std_caching),
 			);
+	}
+	public static function secure_boot()
+	{
+		$status = 'Unknown';
+
+		if(pts_client::executable_in_path('mokutil'))
+		{
+			$mokutil = shell_exec('mokutil --sb-state 2>&1');
+			if(stripos($mokutil, 'enabled') !== false)
+			{
+				$status = 'Enabled';
+			}
+			else if(stripos($mokutil, 'disabled') !== false)
+			{
+				$status = 'Disabled';
+			}
+		}
+		else if(phodevi::is_windows())
+		{
+			$confirm = shell_exec('powershell "Confirm-SecureBootUEFI"');
+			if(strpos($confirm, 'True') !== false)
+			{
+				$status = 'Enabled';
+			}
+			else if(strpos($confirm, 'False') !== false)
+			{
+				$status = 'Disabled';
+			}
+		}
+
+		return $status;
+	}
+	public static function boot_mode()
+	{
+		$boot_mode = 'Unknown';
+
+		if(phodevi::is_linux())
+		{
+			if(!is_dir('/sys/firmware/efi'))
+			{
+				$boot_mode = 'Legacy BIOS';
+			}
+			else
+			{
+				$boot_mode = 'EFI';
+			}
+		}
+		else if(phodevi::is_windows())
+		{
+			$bcdedit = shell_exec('bcdedit');
+			if(strpos($bcdedit, '.efi') !== false)
+			{
+				$boot_mode = 'EFI';
+			}
+			else if(strpos($bcdedit, 'path') !== false)
+			{
+				$boot_mode = 'Legacy BIOS';
+			}
+		}
+
+		return $boot_mode;
+	}
+	public static function tpm_devices()
+	{
+		$tpm = array();
+		if(phodevi::is_linux())
+		{
+			foreach(pts_file_io::glob('/sys/class/tpm/tpm*/device/description') as $tpm_desc)
+			{
+				$model = pts_file_io::file_get_contents($tpm_desc);
+				$dir = dirname($tpm_desc);
+				if(is_file($dir . '/hid'))
+				{
+					$model .= ' ' . pts_file_io::file_get_contents($dir . '/hid');
+				}
+				$tpm[] = $model;
+			}
+		}
+
+		return implode(' + ', $tpm);
 	}
 	public static function usb_devices()
 	{
@@ -50,7 +133,7 @@ class phodevi_motherboard extends phodevi_device_interface
 				}
 
 				$vendor = pts_strings::trim_search_query(pts_strings::strip_string(pts_file_io::file_get_contents($usb_dir . 'manufacturer')));
-				$device = pts_strings::trim_search_query(pts_strings::strip_string(str_replace($vendor, null, pts_file_io::file_get_contents($usb_dir . 'product'))));
+				$device = pts_strings::trim_search_query(pts_strings::strip_string(str_replace($vendor, '', pts_file_io::file_get_contents($usb_dir . 'product'))));
 				$device = pts_strings::keep_in_string($device, pts_strings::CHAR_LETTER | pts_strings::CHAR_NUMERIC | pts_strings::CHAR_DECIMAL | pts_strings::CHAR_SPACE | pts_strings::CHAR_DASH | pts_strings::CHAR_UNDERSCORE | pts_strings::CHAR_COLON | pts_strings::CHAR_COMMA);
 
 				if($vendor == null || $device == null || $vendor == 'Generic')
@@ -194,7 +277,7 @@ class phodevi_motherboard extends phodevi_device_interface
 
 			$device_name = substr($device, ($l = strpos($device, ']:') + 3), ($s = strpos($device, ':', $l)) - $l);
 			$device_name = substr($device_name, 0, strrpos($device_name, ' ['));
-			$device_name = str_replace('/', '-', str_replace(array('[AMD]', '[SiS]'), null, $device_name));
+			$device_name = str_replace('/', '-', str_replace(array('[AMD]', '[SiS]'), '', $device_name));
 			$device_name = pts_strings::strip_string($device_name);
 
 			if($device_name == null || strpos($device_name, ' ') === false)
@@ -230,7 +313,7 @@ class phodevi_motherboard extends phodevi_device_interface
 				{
 					foreach(explode(' ', trim($temp)) as $temp)
 					{
-						$temp = str_replace(',', null, $temp);
+						$temp = str_replace(',', '', $temp);
 						if($temp != null && !in_array($temp, $drivers))
 						{
 							array_push($drivers, $temp);
@@ -365,6 +448,11 @@ class phodevi_motherboard extends phodevi_device_interface
 			$bios_version = trim(str_ireplace(array('smbiosbiosversion', "\n"), '', shell_exec('wmic bios get smbiosbiosversion')));
 		}
 
+		if($bios_version == 'Google')
+		{
+			$bios_version = null;
+		}
+
 		return trim(str_replace(array('(', ')'), '', $bios_version));
 	}
 	public static function motherboard_string()
@@ -372,7 +460,7 @@ class phodevi_motherboard extends phodevi_device_interface
 		// Returns the motherboard / system model name or number
 		$info = null;
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$info = phodevi_osx_parser::read_osx_system_profiler('SPHardwareDataType', 'ModelName');
 		}
@@ -509,6 +597,21 @@ class phodevi_motherboard extends phodevi_device_interface
 
 		// ensure words aren't repeated (e.g. VMware VMware Virtual and MSI MSI X58M (MS-7593))
 		$info = implode(' ', array_unique(explode(' ', $info)));
+
+		if($info == 'Google Compute Engine')
+		{
+			$opt = array('http' => array('method' => 'GET', 'header' => "Metadata-Flavor: Google\r\n"));
+			$ctx = stream_context_create($opt);
+			$machine_type = trim(file_get_contents('http://169.254.169.254/computeMetadata/v1/instance/machine-type', false, $ctx));
+			if(stripos($machine_type, 'machine') !== false)
+			{
+				$machine_type = basename($machine_type);
+				if(!empty($machine_type))
+				{
+					$info .= ' ' . $machine_type;
+				}
+			}
+		}
 
 		$bios = phodevi::read_property('motherboard', 'bios-version');
 		if(!empty($bios) && strpos($info, $bios) === false)

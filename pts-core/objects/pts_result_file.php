@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -78,8 +78,7 @@ class pts_result_file
 		{
 			foreach($xml->System as $s)
 			{
-				$system = new pts_result_file_system(self::clean_input($s->Identifier->__toString()), self::clean_input($s->Hardware->__toString()), self::clean_input($s->Software->__toString()), json_decode(self::clean_input($s->JSON), true), self::clean_input($s->User->__toString()), self::clean_input($s->Notes->__toString()), self::clean_input($s->TimeStamp->__toString()), self::clean_input($s->ClientVersion->__toString()));
-				$this->systems[] = $system;
+				$this->systems[] = new pts_result_file_system(self::clean_input($s->Identifier->__toString()), self::clean_input($s->Hardware->__toString()), self::clean_input($s->Software->__toString()), json_decode(self::clean_input($s->JSON), true), self::clean_input($s->User->__toString()), self::clean_input($s->Notes->__toString()), self::clean_input($s->TimeStamp->__toString()), self::clean_input($s->ClientVersion->__toString()), $this);
 			}
 		}
 
@@ -156,6 +155,11 @@ class pts_result_file
 		{
 			return PTS_SAVE_RESULTS_PATH . $this->save_identifier . '/composite.xml';
 		}
+	}
+	public function get_result_dir()
+	{
+		$composite_xml_dir = dirname($this->get_file_location());
+		return empty($composite_xml_dir) || !is_dir($composite_xml_dir) ? false : $composite_xml_dir . '/';
 	}
 	public function get_system_log_dir($result_identifier = null, $dir_check = true)
 	{
@@ -255,6 +259,10 @@ class pts_result_file
 			$this->systems[] = $system;
 		}
 	}
+	public function add_system_direct($identifier, $hw = null, $sw = null, $json = null, $user = null, $notes = null, $timestamp = null, $version = null)
+	{
+		$this->systems[] = new pts_result_file_system($identifier, $hw, $sw, $json, $user, $notes, $timestamp, $version, $this);
+	}
 	public function get_systems()
 	{
 		return $this->systems;
@@ -263,7 +271,7 @@ class pts_result_file
 	{
 		// XXX this is deprecated
 		$hw = array();
-		foreach($this->get_systems() as $s)
+		foreach($this->systems as &$s)
 		{
 			$hw[] = $s->get_hardware();
 		}
@@ -273,7 +281,7 @@ class pts_result_file
 	{
 		// XXX this is deprecated
 		$sw = array();
-		foreach($this->get_systems() as $s)
+		foreach($this->systems as &$s)
 		{
 			$sw[] = $s->get_software();
 		}
@@ -283,7 +291,7 @@ class pts_result_file
 	{
 		// XXX this is deprecated
 		$ids = array();
-		foreach($this->get_systems() as $s)
+		foreach($this->systems as &$s)
 		{
 			$ids[] = $s->get_identifier();
 		}
@@ -291,9 +299,21 @@ class pts_result_file
 	}
 	public function is_system_identifier_in_result_file($identifier)
 	{
-		foreach($this->get_systems() as $s)
+		foreach($this->systems as &$s)
 		{
 			if($s->get_identifier() == $identifier)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+	public function system_logs_available()
+	{
+		foreach($this->systems as &$s)
+		{
+			if($s->has_log_files())
 			{
 				return true;
 			}
@@ -555,7 +575,7 @@ class pts_result_file
 				{
 					foreach($this->get_relation_map($index) as $child_ro)
 					{
-						if($this->result_objects[$child_ro])
+						if(isset($this->result_objects[$child_ro]))
 						{
 							unset($this->result_objects[$child_ro]);
 						}
@@ -564,6 +584,23 @@ class pts_result_file
 			}
 		}
 		return $did_remove;
+	}
+	public function remove_noisy_results($noise_level_percent = 6)
+	{
+		foreach($this->result_objects as $i => &$ro)
+		{
+			if($ro->has_noisy_result($noise_level_percent))
+			{
+				$this->remove_result_object_by_id($i);
+			}
+		}
+	}
+	public function reduce_precision()
+	{
+		foreach($this->result_objects as $i => &$ro)
+		{
+			$ro->test_result_buffer->reduce_precision();
+		}
 	}
 	public function update_annotation_for_result_object_by_id($index, $annotation)
 	{
@@ -641,7 +678,12 @@ class pts_result_file
 	public function avoid_duplicate_identifiers()
 	{
 		// avoid duplicate test identifiers
-		foreach(pts_arrays::duplicates_in_array($this->get_system_identifiers()) as $duplicate)
+		$identifiers = $this->get_system_identifiers();
+		if(count($identifiers) < 2)
+		{
+			return;
+		}
+		foreach(pts_arrays::duplicates_in_array($identifiers) as $duplicate)
 		{
 			while($this->is_system_identifier_in_result_file($duplicate))
 			{
@@ -652,11 +694,11 @@ class pts_result_file
 					$new_identifier = $duplicate . ' #' . $i;
 				}
 				while($this->is_system_identifier_in_result_file($new_identifier));
-				$this->rename_run($duplicate, $new_identifier);
+				$this->rename_run($duplicate, $new_identifier, false);
 			}
 		}
 	}
-	public function rename_run($from, $to)
+	public function rename_run($from, $to, $rename_logs = true)
 	{
 		if($from == 'PREFIX')
 		{
@@ -678,12 +720,26 @@ class pts_result_file
 		}
 		else
 		{
+			$found = false;
 			foreach($this->systems as &$s)
 			{
 				if($s->get_identifier() == $from)
 				{
+					$found = true;
 					$s->set_identifier($to);
 					break;
+				}
+			}
+			if($found && $rename_logs && ($d = $this->get_system_log_dir($from, true)))
+			{
+				$d = dirname(dirname($d)) . '/';
+
+				foreach(array('test-logs', 'system-logs', 'installation-logs') as $dir_name)
+				{
+					if(is_dir($d . $dir_name . '/' . $from))
+					{
+						rename($d . $dir_name . '/' . $from, $d . $dir_name . '/' . $to);
+					}
 				}
 			}
 		}
@@ -777,6 +833,16 @@ class pts_result_file
 		else if($only_if_result_already_present == false)
 		{
 			$this->result_objects[$ch] = $result_object;
+		}
+
+		$parent = $result_object->get_parent_hash();
+		if($parent)
+		{
+			if(!isset($this->ro_relation_map[$parent]))
+			{
+				$this->ro_relation_map[$parent] = array();
+			}
+			$this->ro_relation_map[$parent][] = $ch;
 		}
 
 		return $ch;

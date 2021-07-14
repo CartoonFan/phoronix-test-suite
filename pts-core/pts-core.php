@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	pts-core.php: To boot-strap the Phoronix Test Suite start-up
 
 	This program is free software; you can redistribute it and/or modify
@@ -162,6 +162,7 @@ function pts_define_directories()
 	}
 	else if(defined('PTS_STORAGE_PATH'))
 	{
+		// e.g. OpenBenchmarking.org
 		pts_define('PTS_OPENBENCHMARKING_SCRATCH_PATH', PTS_STORAGE_PATH . 'openbenchmarking.org/');
 		pts_define('PTS_TEST_PROFILE_PATH', PTS_STORAGE_PATH . 'test-profiles/');
 		pts_define('PTS_TEST_SUITE_PATH', PTS_STORAGE_PATH . 'test-suites/');
@@ -291,13 +292,19 @@ function pts_version_codenames()
 		'9.4' => 'Vestby',
 		'9.6' => 'Nittedal',
 		'9.8' => 'Nesodden',
+		//  Senja Municipality in Troms og Finnmark - Norway
+		'10.0' => 'Finnsnes',
+		'10.2' => 'Harstad',
+		'10.4' => 'Ibestad',
+		'10.6' => 'Tjeldsund',
+		'10.8' => 'Nesseby',
 		);
 }
 
-pts_define('PTS_VERSION', '9.8.0m1');
-pts_define('PTS_CORE_VERSION', 9710);
-pts_define('PTS_RELEASE_DATE', '20200603');
-pts_define('PTS_CODENAME', 'Nesodden');
+pts_define('PTS_VERSION', '10.4.0');
+pts_define('PTS_CORE_VERSION', 10400);
+pts_define('PTS_RELEASE_DATE', '20210516');
+pts_define('PTS_CODENAME', 'Ibestad');
 
 pts_define('PTS_IS_CLIENT', (defined('PTS_MODE') && strstr(PTS_MODE, 'CLIENT') !== false));
 pts_define('PTS_IS_WEB_CLIENT', (defined('PTS_MODE') && PTS_MODE == 'WEB_CLIENT'));

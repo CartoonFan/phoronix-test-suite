@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2010 - 2020, Phoronix Media
-	Copyright (C) 2010 - 2020, Michael Larabel
+	Copyright (C) 2010 - 2021, Phoronix Media
+	Copyright (C) 2010 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -86,7 +86,11 @@ class pts_strings
 	{
 		return function_exists('ctype_upper') ? ctype_upper($string) : ($string == strtoupper($string));
 	}
-	public static function trim_search_query($value, $remove_multipliers = false)
+	public static function trim_search_query_leave_hdd_size($value)
+	{
+		return pts_strings::trim_search_query($value, false, true);
+	}
+	public static function trim_search_query($value, $remove_multipliers = false, $keep_hdd_size = false)
 	{
 		$search_break_characters = array('@', '(', '/', '+', '[', '<', '*', '"');
 		for($i = 0, $x = strlen($value); $i < $x; $i++)
@@ -113,7 +117,7 @@ class pts_strings
 			}
 		}
 
-		$value = str_replace('& ', null, $value);
+		$value = str_replace('& ', '', $value);
 
 		if(substr($value, -1) == '.')
 		{
@@ -145,7 +149,12 @@ class pts_strings
 					// Version number being appended to product (some mobos) or the MB/GB size for GPUs
 					array_pop($words);
 				}
-				else if(strpos($words[0], 'GB') !== false)
+				else if(!$keep_hdd_size && strpos($words[0], 'GB') !== false)
+				{
+					// Likely disk size in front of string
+					array_shift($words);
+				}
+				else if(!$keep_hdd_size && strpos($words[0], 'TB') !== false)
 				{
 					// Likely disk size in front of string
 					array_shift($words);
@@ -443,7 +452,7 @@ class pts_strings
 			// to get rid of Scheisse like 'Gtk-WARNING **: Unable'
 			$str = substr($str, 0, strrpos($str, ' ', (0 - (strlen($str) - $w))));
 		}
-		if(($w = stripos($str, ' with Radeon')) !== false)
+		if(($w = stripos($str, ' with Radeon')) !== false || ($w = stripos($str, ' w/ Radeon')) !== false)
 		{
 			$str = substr($str, 0, $w);
 		}
@@ -478,7 +487,10 @@ class pts_strings
 	{
 		// Try to strip out timestamps from lines like Xorg.0.log and dmesg, e.g.:
 		// [  326.390358] EXT4-fs (dm-1): initial error at 1306235400: ext4_journal_start_sb:251
-
+		if($log === null)
+		{
+			$log = '';
+		}
 		$log = explode(PHP_EOL, $log);
 		foreach($log as &$line)
 		{
@@ -647,6 +659,7 @@ class pts_strings
 				break;
 		}
 
+		$time_in_seconds = (int)$time_in_seconds;
 		if($round_to > 0)
 		{
 			$time_in_seconds += $round_to - ($time_in_seconds % $round_to);
@@ -692,10 +705,10 @@ class pts_strings
 	public static function number_suffix_handler($n)
 	{
 		$suffix = 'th';
-		$n = $n % 100;
-		if($n < 11 || $n > 13)
+		$r = $n % 100;
+		if($r < 11 || $r > 13)
 		{
-			switch($n % 10)
+			switch($r % 10)
 			{
 				case 1:
 					$suffix = 'st';
@@ -772,10 +785,15 @@ class pts_strings
 	}
 	public static function simplify_string_for_file_handling($str)
 	{
-		return pts_strings::keep_in_string(trim(str_replace(array('/', '\\'), '_', $str)), pts_strings::CHAR_LETTER | pts_strings::CHAR_NUMERIC | pts_strings::CHAR_DASH | pts_strings::CHAR_DECIMAL | pts_strings::CHAR_SPACE | pts_strings::CHAR_UNDERSCORE | pts_strings::CHAR_COMMA | pts_strings::CHAR_AT | pts_strings::CHAR_PLUS | pts_strings::CHAR_SEMICOLON | pts_strings::CHAR_EQUAL);
+		return $str == null ? '' : pts_strings::keep_in_string(trim(str_replace(array('/', '\\'), '_', $str)), pts_strings::CHAR_LETTER | pts_strings::CHAR_NUMERIC | pts_strings::CHAR_DASH | pts_strings::CHAR_DECIMAL | pts_strings::CHAR_SPACE | pts_strings::CHAR_UNDERSCORE | pts_strings::CHAR_COMMA | pts_strings::CHAR_AT | pts_strings::CHAR_PLUS | pts_strings::CHAR_SEMICOLON | pts_strings::CHAR_EQUAL);
 	}
 	public static function highlight_words_with_colon($str, $pre = '<strong>', $post = '</strong>')
 	{
+		if($str == null)
+		{
+			return $str;
+		}
+
 		$str_r = explode(' ', $str);
 		foreach($str_r as &$word)
 		{
@@ -788,6 +806,11 @@ class pts_strings
 	}
 	public static function highlight_diff_two_structured_strings($str1, $str2, $pre = '<span style="color: #FF0000;">', $post = '</span>')
 	{
+		if($str2 == null)
+		{
+			return $str1;
+		}
+
 		$str1 = explode(', ', $str1);
 		$str2 = explode(', ', $str2);
 		foreach($str1 as $i => &$word)
@@ -798,6 +821,20 @@ class pts_strings
 			}
 		}
 		return implode(', ', $str1);
+	}
+	public static function is_text_string($str_check)
+	{
+		$is_text = false;
+
+		if(function_exists('ctype_print'))
+		{
+			$str_check = str_replace("\t", '', $str_check);
+			$str_check = str_replace("\r", '', $str_check);
+			$str_check = str_replace("\n", '', $str_check);
+			$is_text = ctype_print($str_check);
+		}
+
+		return $is_text;
 	}
 }
 

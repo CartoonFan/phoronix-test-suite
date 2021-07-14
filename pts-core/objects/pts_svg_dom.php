@@ -31,7 +31,7 @@ class pts_svg_dom
 	{
 		$dom = new DOMImplementation();
 		$dtd = $dom->createDocumentType('svg', '-//W3C//DTD SVG 1.1//EN', 'http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd');
-		$this->dom = $dom->createDocument(null, null, $dtd);
+		$this->dom = $dom->createDocument(null, '', $dtd);
 		$this->dom->formatOutput = PTS_IS_CLIENT && PTS_IS_DEV_BUILD;
 
 		$pts_comment = $this->dom->createComment(pts_core::program_title(false) . ' [ http://www.phoronix-test-suite.com/ ]');
@@ -162,7 +162,7 @@ class pts_svg_dom
 	{
 		$el = $this->dom->createElement('a');
 		$el->setAttribute('xlink:href', $url);
-		$el->setAttribute('xlink:show', 'new');
+		$el->setAttribute('target', '_blank');
 		return $this->svg->appendChild($el);
 	}
 	public function make_g($attributes = array(), $append_to = false)
@@ -184,7 +184,7 @@ class pts_svg_dom
 			$link_key = ($element_type == 'image' ? 'http_link' : 'xlink:href');
 			$link = $this->dom->createElement('a');
 			$link->setAttribute('xlink:href', $attributes[$link_key]);
-			$link->setAttribute('xlink:show', 'new');
+			$link->setAttribute('target', '_blank');
 			$link->appendChild($el);
 			if($append_to)
 			{
@@ -223,7 +223,7 @@ class pts_svg_dom
 		{
 			$link = $this->dom->createElement('a');
 			$link->setAttribute('xlink:href', $attributes['xlink:href']);
-			$link->setAttribute('xlink:show', 'new');
+			$link->setAttribute('target', '_blank');
 			$link->appendChild($el);
 			if($append_to)
 			{
@@ -268,6 +268,7 @@ class pts_svg_dom
 		if($queue_dimensions[0] < $attributes['width'])
 		{
 			// No wrapping is occuring, so stuff it in a more efficient text element instead
+			unset($attributes['width']);
 			$this->add_text_element($text_string, $attributes);
 			$estimated_height += ($attributes['font-size'] + 3);
 			return;
@@ -313,7 +314,7 @@ class pts_svg_dom
 		{
 			$link = $this->dom->createElement('a');
 			$link->setAttribute('xlink:href', $attributes['xlink:href']);
-			$link->setAttribute('xlink:show', 'new');
+			$link->setAttribute('target', '_blank');
 			$link->appendChild($el);
 			if($append_to)
 			{
@@ -439,6 +440,10 @@ class pts_svg_dom
 	}
 	public static function estimate_text_dimensions($text_string, $font_size)
 	{
+		if($text_string == null)
+		{
+			return array(0, 0);
+		}
 		$box_height = ceil(0.76 * $font_size);
 		$box_width = ceil((0.76 * strlen($text_string) * $font_size) - ceil(strlen($text_string) * 1.05));
 

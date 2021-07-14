@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2015 - 2020, Phoronix Media
-	Copyright (C) 2015 - 2020, Michael Larabel
+	Copyright (C) 2015 - 2021, Phoronix Media
+	Copyright (C) 2015 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -103,7 +103,7 @@ class pts_stress_run_manager extends pts_test_run_manager
 				echo PHP_EOL . pts_client::cli_just_bold('TEST_RESULTS_IDENTIFIER') . ' is not set; test identifier is ' . $test_run_manager->save_result_identifier . '.' . PHP_EOL . PHP_EOL;
 			}
 
-			$sys = new pts_result_file_system($test_run_manager->save_result_identifier, phodevi::system_hardware(true), phodevi::system_software(true), array(), pts_client::current_user(), null, date('Y-m-d H:i:s', pts_client::current_time()), PTS_VERSION);
+			$sys = new pts_result_file_system($test_run_manager->save_result_identifier, phodevi::system_hardware(true), phodevi::system_software(true), array(), pts_client::current_user(), null, date('Y-m-d H:i:s', pts_client::current_time()), PTS_VERSION, $test_run_manager->result_file);
 			$test_run_manager->result_file->add_system($sys);
 		}
 		else
@@ -516,7 +516,7 @@ class pts_stress_run_manager extends pts_test_run_manager
 		{
 			$report_buffer .= 'WAITING FOR CURRENT TEST RUN QUEUE TO FINISH.' . PHP_EOL;
 		}
-		$report_buffer .= pts_client::cli_just_bold('SYSTEM IP: ') . pts_network::get_local_ip() . PHP_EOL;
+		$report_buffer .= pts_client::cli_just_bold('SYSTEM IP: ') . phodevi::read_property('network', 'ip') . PHP_EOL;
 		$report_buffer .= pts_client::cli_just_bold('HOSTNAME: ') . phodevi::read_property('system', 'hostname') . PHP_EOL;
 		$report_buffer .= pts_client::cli_just_bold('# OF CONCURRENT TESTS: ') . $this->multi_test_stress_run . PHP_EOL . PHP_EOL;
 

@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -45,12 +45,38 @@ class pts_test_result
 	protected $already_normalized = false;
 	public $dynamically_generated = false;
 	public $belongs_to_suite = false;
+	public $pre_run_message = null;
 
 	public function __construct($test_profile)
 	{
 		$this->test_profile = clone $test_profile;
-		$this->result = 0;
 		$this->test_run_times = array();
+	}
+	public function get_estimated_run_time()
+	{
+		// More accurate time tracking than just test_profile->get_estimated_run_time() ....
+		return $this->get_estimated_per_run_time() * $this->test_profile->get_times_to_run();
+	}
+	public function get_estimated_per_run_time(&$accuracy = 0)
+	{
+		$per_run_time = 0;
+		if(($t = $this->test_profile->test_installation->get_average_time_per_run($this->get_comparison_hash(true, false))) > 0)
+		{
+			$accuracy = 1;
+			$per_run_time = $t;
+		}
+		else if(($t = $this->test_profile->test_installation->get_average_time_per_run('avg')) > 0)
+		{
+			$accuracy = 0;
+			$per_run_time = $t;
+		}
+		else
+		{
+			$accuracy = 0;
+			$per_run_time = $this->test_profile->get_estimated_run_time() / $this->test_profile->get_default_times_to_run();
+		}
+
+		return round($per_run_time);
 	}
 	public function __clone()
 	{
@@ -221,7 +247,7 @@ class pts_test_result
 				$tp = $this->test_profile->get_title();
 			}
 
-			return pts_test_profile::generate_comparison_hash($tp, $this->get_arguments(), null, null, $raw_output);
+			return pts_test_profile::generate_comparison_hash($tp, $this->get_arguments(), '', '', $raw_output);
 		}
 	}
 	public function __toString()
@@ -358,6 +384,10 @@ class pts_test_result
 		{
 			return -1;
 		}
+		if($this->get_parent_hash() != null)
+		{
+			return -1;
+		}
 
 		$best = $this->get_result_first(false);
 		$worst = $this->get_result_last(false);
@@ -474,6 +504,7 @@ class pts_test_result
 
 		$this->test_profile->set_result_proportion('HIB');
 		$this->test_profile->set_result_scale('Relative Performance');
+		$this->test_result_buffer->recalculate_buffer_items_min_max();
 		return true;
 	}
 	public function sort_results_by_performance()
@@ -539,6 +570,7 @@ class pts_test_result
 				}
 			}
 		}
+		$this->test_result_buffer->recalculate_buffer_items_min_max();
 		return true;
 	}
 	public function get_result_value_from_name($name)
@@ -640,6 +672,7 @@ class pts_test_result
 				}
 			}
 		}
+		$this->test_result_buffer->recalculate_buffer_items_min_max();
 		return true;
 	}
 	public function recalculate_averages_without_outliers($mag = 2)
@@ -662,6 +695,7 @@ class pts_test_result
 				}
 			}
 		}
+		$this->test_result_buffer->recalculate_buffer_items_min_max();
 	}
 	public function get_run_time_avg()
 	{
@@ -669,11 +703,11 @@ class pts_test_result
 
 		foreach($this->test_result_buffer->get_buffer_items() as $item)
 		{
-			$json_data = $item->get_result_json();
-			if(isset($json_data['test-run-times']))
+			$total_time = $item->get_run_time_total();
+
+			if($total_time > 0)
 			{
-				$test_run_times = explode(':', $json_data['test-run-times']);
-				$total_times[] = array_sum($test_run_times);
+				$total_times[] = $total_time;
 			}
 		}
 
@@ -685,11 +719,11 @@ class pts_test_result
 
 		foreach($this->test_result_buffer->get_buffer_items() as $item)
 		{
-			$json_data = $item->get_result_json();
-			if(isset($json_data['test-run-times']))
+			$total_time = $item->get_run_time_total();
+
+			if($total_time > 0)
 			{
-				$test_run_times = explode(':', $json_data['test-run-times']);
-				$total_times[$item->get_result_identifier()] = array_sum($test_run_times);
+				$total_times[$item->get_result_identifier()] = $total_time;
 			}
 		}
 

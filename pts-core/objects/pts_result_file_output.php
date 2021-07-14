@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2010 - 2019, Phoronix Media
-	Copyright (C) 2010 - 2019, Michael Larabel
+	Copyright (C) 2010 - 2021, Phoronix Media
+	Copyright (C) 2010 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -124,7 +124,7 @@ class pts_result_file_output
 			{
 				$buffer_item = $result_object->test_result_buffer->find_buffer_item($column);
 				$value = $buffer_item != false ? $buffer_item->get_result_value() : null;
-				if(strpos($value, ',') !== false)
+				if($value != null && strpos($value, ',') !== false)
 				{
 					$value = explode(',', $value);
 					$value = round(array_sum($value) / count($value), 2);
@@ -169,7 +169,7 @@ class pts_result_file_output
 
 		return $csv_output;
 	}
-	public static function result_file_to_text(&$result_file, $terminal_width = 80, $stylize_output = false)
+	public static function result_file_to_text(&$result_file, $terminal_width = 79, $stylize_output = false)
 	{
 		$result_output = null;
 
@@ -194,7 +194,7 @@ class pts_result_file_output
 
 		foreach($result_file->get_result_objects() as $result_object)
 		{
-			$result_output .= self::test_result_to_text($result_object, $terminal_width, $stylize_output, null, true, true);
+			$result_output .= self::test_result_to_text($result_object, $terminal_width, $stylize_output, null, true, true, ($terminal_width > 80 ? '    ' : ''));
 			$result_output .= PHP_EOL . PHP_EOL;
 		}
 
@@ -292,7 +292,7 @@ class pts_result_file_output
 
 		return $result_output;
 	}
-	public static function test_result_to_text($result_object, $terminal_width = 80, $stylize_output = false, $highlight_result = null, $show_title = true, $always_force_title = false)
+	public static function test_result_to_text($result_object, $terminal_width = 80, $stylize_output = false, $highlight_result = null, $show_title = true, $always_force_title = false, $prepend_line = '    ')
 	{
 		$result_output = null;
 		static $last_title_shown = null;
@@ -300,14 +300,14 @@ class pts_result_file_output
 		{
 			if($always_force_title || $last_title_shown != $result_object->test_profile->get_title())
 			{
-				$result_output .= PHP_EOL . '    ' . trim($result_object->test_profile->get_title() . ' ' . $result_object->test_profile->get_app_version());
+				$result_output .= PHP_EOL . $prepend_line . trim($result_object->test_profile->get_title() . ' ' . $result_object->test_profile->get_app_version());
 				$last_title_shown = $result_object->test_profile->get_title();
 			}
-			$result_output .= PHP_EOL . '    ' . $result_object->get_arguments_description();
+			$result_output .= PHP_EOL . $prepend_line . $result_object->get_arguments_description();
 		}
 		if($result_object->test_profile->get_result_scale() != null)
 		{
-			$scale_line = '    ' . $result_object->test_profile->get_result_scale();
+			$scale_line = $prepend_line . $result_object->test_profile->get_result_scale();
 			if($result_object->test_profile->get_result_proportion() == 'LIB')
 			{
 				$scale_line .= ' < Lower Is Better';
@@ -384,7 +384,7 @@ class pts_result_file_output
 			foreach($buffers as &$buffer_item)
 			{
 				$val = $buffer_item->get_result_value();
-				$result_line = '    ' . $buffer_item->get_result_identifier() . ' ';
+				$result_line = $prepend_line . $buffer_item->get_result_identifier() . ' ';
 				$result_length_offset = $longest_identifier_length - strlen($buffer_item->get_result_identifier());
 				if($result_length_offset > 0)
 				{
@@ -410,8 +410,9 @@ class pts_result_file_output
 						$box_plot = str_split($box_plot);
 
 						// BOX PLOT
-						$whisker_bottom = pts_math::find_percentile($values, 0.02);
-						$whisker_top = pts_math::find_percentile($values, 0.98);
+						sort($values, SORT_NUMERIC);
+						$whisker_bottom = pts_math::find_percentile($values, 0.02, true);
+						$whisker_top = pts_math::find_percentile($values, 0.98, true);
 						$unique_values = array_unique($values);
 						foreach($unique_values as &$val)
 						{
@@ -430,9 +431,9 @@ class pts_result_file_output
 							$box_plot[$i] = '-';
 						}
 
-						$box_left = round((pts_math::find_percentile($values, 0.25) / $max_value) * $box_plot_size);
-						$box_middle = round((pts_math::find_percentile($values, 0.5) / $max_value) * $box_plot_size);
-						$box_right = round((pts_math::find_percentile($values, 0.75) / $max_value) * $box_plot_size);
+						$box_left = round((pts_math::find_percentile($values, 0.25, true) / $max_value) * $box_plot_size);
+						$box_middle = round((pts_math::find_percentile($values, 0.5, true) / $max_value) * $box_plot_size);
+						$box_right = round((pts_math::find_percentile($values, 0.75, true) / $max_value) * $box_plot_size);
 						for($i = $box_left; $i <= $box_right; $i++)
 						{
 							$box_plot[$i] = '#';
@@ -625,7 +626,8 @@ class pts_result_file_output
 			}
 		}
 
-		if($geo = pts_result_file_analyzer::generate_geometric_mean_result($result_file))
+		// disable this for now
+		if(false && $geo = pts_result_file_analyzer::generate_geometric_mean_result($result_file))
 		{
 			$table[] = array_fill(0, count($systems), ' ');
 			$row = &$table[count($table) - 1];
@@ -659,6 +661,30 @@ class pts_result_file_output
 
 		return $html;
 	}
+	public static function diff_in_system($from, $to)
+	{
+		if($from == null)
+		{
+			return false;
+		}
+
+		$from = explode(', ', $from);
+		$to = explode(', ', $to);
+		$changed = array();
+		foreach($from as $i => &$word)
+		{
+			if(isset($to[$i]) && $to[$i] != $from[$i])
+			{
+				list($component_type, $component) = explode(': ', $to[$i]);
+				if(in_array($component_type, array('Audio', 'Monitor')))
+				{
+					continue;
+				}
+				$changed[$component_type] = $component;
+			}
+		}
+		return !empty($changed) ? $changed : false;
+	}
 	public static function result_file_to_system_html(&$result_file)
 	{
 		$html = null;
@@ -673,43 +699,60 @@ class pts_result_file_output
 			$html .= '<h2>' . $system->get_identifier() . '</h2>';
 			if(isset($systems[($i + 1)]) && $systems[($i + 1)]->get_hardware() == $system->get_hardware() && $systems[($i + 1)]->get_software() == $system->get_software())
 			{
-				continue;
+				//continue;
 			}
-			$hw = $system->get_hardware();
-			$sw = $system->get_software();
-
-			$hw = pts_strings::highlight_words_with_colon($hw);
-			$sw = pts_strings::highlight_words_with_colon($sw);
-
-			if($hw != $prev_hw)
+			else
 			{
-				$html .= '<p>' . pts_strings::highlight_diff_two_structured_strings($hw, $prev_hw) . '</p>';
-				$prev_hw = $hw;
-			}
-			if($sw != $prev_sw)
-			{
-				$html .= '<p>' . $sw . '</p>';
-				$prev_sw = $sw;
-			}
+				$hw = $system->get_hardware();
+				$sw = $system->get_software();
 
-			$attributes = array();
-			pts_result_file_analyzer::system_to_note_array($system, $attributes);
-			if(!empty($attributes))
-			{
-				$notes = '<p class="mini"><em>';
-				foreach($attributes as $section => $data)
+				if($hw != $prev_hw)
 				{
-					foreach($data as $c => $val)
+					if(($diff = self::diff_in_system($prev_hw, $hw)) && count($diff) < 4 && $sw == $prev_sw)
 					{
-						$notes .= '<strong>' .$section . ' Notes:</strong> ' . $val . '<br />';
+						foreach($diff as $type => $c)
+						{
+							$html .= '<p>Changed <strong>' . $type . '</strong> to <strong>' . $c . '</strong>.</p>';
+						}
 					}
+					else
+					{
+						$html .= '<p>' . pts_strings::highlight_diff_two_structured_strings(pts_strings::highlight_words_with_colon($hw), pts_strings::highlight_words_with_colon($prev_hw)) . '</p>';
+					}
+					$prev_hw = $hw;
 				}
-				$notes .= '</em></p>';
-
-				if($notes != $prev_notes)
+				if($sw != $prev_sw)
 				{
-					$html .= $notes;
-					$prev_notes = $notes;
+					$html .= '<p>' . pts_strings::highlight_words_with_colon($sw) . '</p>';
+					$prev_sw = $sw;
+				}
+			}
+
+			if(isset($systems[($i + 1)]) && $systems[($i + 1)]->get_json() == $system->get_json() && $systems[($i + 1)]->get_notes() == $system->get_notes())
+			{
+			
+			}
+			else
+			{
+				$attributes = array();
+				pts_result_file_analyzer::system_to_note_array($system, $attributes);
+				if(!empty($attributes))
+				{
+					$notes = '<p class="mini"><em>';
+					foreach($attributes as $section => $data)
+					{
+						foreach($data as $c => $val)
+						{
+							$notes .= '<strong>' .$section . ' Notes:</strong> ' . $val . '<br />';
+						}
+					}
+					$notes .= '</em></p>';
+
+					if($notes != $prev_notes)
+					{
+						$html .= $notes;
+						$prev_notes = $notes;
+					}
 				}
 			}
 		}

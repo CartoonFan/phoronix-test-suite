@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2010 - 2020, Phoronix Media
-	Copyright (C) 2010 - 2020, Michael Larabel
+	Copyright (C) 2010 - 2021, Phoronix Media
+	Copyright (C) 2010 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -112,9 +112,9 @@ class pts_openbenchmarking_upload extends pts_openbenchmarking
 				$system_logs_zip = pts_client::create_temporary_file('.zip');
 				pts_compression::zip_archive_create($system_logs_zip, $system_log_dir);
 
-				if(filesize($system_logs_zip) < 2097152)
+				if(filesize($system_logs_zip) < 3097152)
 				{
-					// If it's over 2MB, probably too big
+					// Don't upload if too big
 					$system_logs = base64_encode(file_get_contents($system_logs_zip));
 					$system_logs_hash = sha1($system_logs);
 				}
@@ -133,7 +133,7 @@ class pts_openbenchmarking_upload extends pts_openbenchmarking
 		// Compress the result file XML if it's big
 		if(isset($composite_xml[40000]) && function_exists('bzcompress'))
 		{
-			$composite_xml_bz = bzcompress($composite_xml);
+			$composite_xml_bz = bzcompress($composite_xml, 8);
 
 			if($composite_xml_bz != false)
 			{
@@ -141,9 +141,9 @@ class pts_openbenchmarking_upload extends pts_openbenchmarking
 				$composite_xml_type = 'composite_xml_bz';
 			}
 		}
-		else if(isset($composite_xml[40000]) && function_exists('gzdeflate'))
+		else if(isset($composite_xml[10000]) && function_exists('gzdeflate'))
 		{
-			$composite_xml_gz = gzdeflate($composite_xml);
+			$composite_xml_gz = gzdeflate($composite_xml, 9);
 
 			if($composite_xml_gz != false)
 			{
@@ -166,17 +166,17 @@ class pts_openbenchmarking_upload extends pts_openbenchmarking
 			$to_post['display_status'] = pts_openbenchmarking_client::$client_settings['ResultUploadsDefaultDisplayStatus'];
 		}
 
-		$json_response = pts_openbenchmarking::make_openbenchmarking_request('upload_test_result', $to_post);
+		$result_upload_timeout = 55;
+		$json_response = pts_openbenchmarking::make_openbenchmarking_request('upload_test_result', $to_post, $result_upload_timeout);
 		$json_response = json_decode($json_response, true);
 		if(!is_array($json_response) && !empty($system_logs))
 		{
 			// Sometimes OpenBenchmarking has issues with large result files, so for now try uploading again with no logs
 			$to_post['system_logs_zip'] = null;
 			$to_post['system_logs_hash'] = null;
-			$json_response = pts_openbenchmarking::make_openbenchmarking_request('upload_test_result', $to_post);
+			$json_response = pts_openbenchmarking::make_openbenchmarking_request('upload_test_result', $to_post, $result_upload_timeout);
 			$json_response = json_decode($json_response, true);
 		}
-
 
 		if(!is_array($json_response))
 		{
@@ -230,6 +230,11 @@ class pts_openbenchmarking_upload extends pts_openbenchmarking
 				list($test_install, $error) = $data;
 				$upload_data = array('test_identifier' => $test_install->test_profile->get_identifier(), 'error' => $error, 'os' => phodevi::read_property('system', 'vendor-identifier'));
 				pts_network::http_upload_via_post(pts_openbenchmarking::openbenchmarking_host() . 'extern/statistics/report-test-install-failure.php', $upload_data);
+				break;
+			case 'download_failure':
+				list($test_install, $broken_url) = $data;
+				$upload_data = array('test_identifier' => $test_install->test_profile->get_identifier(), 'broken_url' => $broken_url);
+				pts_network::http_upload_via_post(pts_openbenchmarking::openbenchmarking_host() . 'extern/statistics/report-download-failure.php', $upload_data);
 				break;
 		}
 	}

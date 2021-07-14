@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2019, Phoronix Media
-	Copyright (C) 2008 - 2019, Michael Larabel
+	Copyright (C) 2008 - 2020, Phoronix Media
+	Copyright (C) 2008 - 2020, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -116,6 +116,72 @@ class pts_arrays
 		}
 
 		return $l;
+	}
+	public static function natural_krsort(&$array)
+	{
+		$keys = array_keys($array);
+		natsort($keys);
+		$sorted_array = array();
+
+		foreach($keys as $k)
+		{
+			$sorted_array[$k] = $array[$k];
+		}
+
+		$array = array_reverse($sorted_array, true);
+	}
+	//
+	// Popularity Tracking / Most Common Occurences
+	//
+	public static function popularity_tracker(&$popularity_array, $add_to_tracker)
+	{
+		if(!is_array($popularity_array))
+		{
+			$popularity_array = array();
+		}
+		if(empty($add_to_tracker))
+		{
+			return;
+		}
+		foreach($popularity_array as &$el)
+		{
+			if($el['value'] == $add_to_tracker)
+			{
+				$el['popularity']++;
+				return;
+			}
+		}
+		$popularity_array[] = array('value' => $add_to_tracker, 'popularity' => 1);
+	}
+	public static function get_most_popular_from_tracker(&$popularity_array, $ret = 1)
+	{
+		usort($popularity_array, array('pts_arrays', 'compare_popularity'));
+
+		if($ret == 1)
+		{
+			return $popularity_array[0]['value'];
+		}
+		else
+		{
+			$pops = array();
+			for($i = 0; $i < $ret; $i++)
+			{
+				$pops[] = $popularity_array[$i]['value'];
+			}
+			return $pops;
+		}
+	}
+	public static function compare_popularity($a, $b)
+	{
+		$a = $a['popularity'];
+		$b = $b['popularity'];
+
+		if($a == $b)
+		{
+			return 0;
+		}
+
+		return $a > $b ? -1 : 1;
 	}
 }
 

@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2009 - 2020, Phoronix Media
-	Copyright (C) 2009 - 2020, Michael Larabel
+	Copyright (C) 2009 - 2021, Phoronix Media
+	Copyright (C) 2009 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -78,6 +78,25 @@ class pts_math
 		}
 		return (1 / $sum) * count($values);
 	}
+	public static function max_number($a, $b, $fallback_on_no_number = 1)
+	{
+		if(($an = is_numeric($a)) && ($bn = is_numeric($b)))
+		{
+			return max($a, $b);
+		}
+		else if($an)
+		{
+			return $a;
+		}
+		else if(isset($bn) && $bn)
+		{
+			return $b;
+		}
+		else
+		{
+			return $fallback_on_no_number;
+		}
+	}
 	public static function standard_error($values)
 	{
 		self::clean_numeric_array($values);
@@ -92,7 +111,7 @@ class pts_math
 		$outlier = $mag * $std_dev;
 		foreach($values as $i)
 		{
-			if(is_numeric($i) && abs($i - $mean) < $outlier)
+			if(is_numeric($i) && abs($i - $mean) <= $outlier)
 			{
 				$ret[] = $i;
 			}
@@ -137,7 +156,11 @@ class pts_math
 	public static function get_precision($number)
 	{
 		// number of decimal digits
-		if(is_array($number))
+		if($number === null)
+		{
+			return 0;
+		}
+		else if(is_array($number))
 		{
 			$max_precision = 0;
 			foreach($number as $n)
@@ -157,9 +180,12 @@ class pts_math
 		// This is better than using round() with precision because of the $precision is > than the current value, 0s will not be appended
 		return is_numeric($number) ? number_format($number, $precision, '.', '') : $number;
 	}
-	public static function find_percentile($values, $quartile)
+	public static function find_percentile($values, $quartile, $values_sorted = false)
 	{
-		sort($values, SORT_NUMERIC);
+		if($values_sorted == false)
+		{
+			sort($values, SORT_NUMERIC);
+		}
 		$qr_index = count($values) * $quartile;
 		$qr = $values[floor($qr_index)];
 
@@ -205,6 +231,47 @@ class pts_math
 		{
 			return ($values[($index - 1)] + $values[($index + 1)]) / 2;
 		}
+	}
+	public static function number_with_unit_to_mb($value)
+	{
+		$value = trim($value);
+		$num = null;
+		$unit = null;
+		if(($x = strpos($value, ' ')) !== false)
+		{
+			$num = substr($value, 0, $x);
+			$unit = substr($value, ($x + 1));
+		}
+		else
+		{
+			switch(substr($value, -1))
+			{
+				case 'K':
+					$num = substr($value, 0, -1);
+					$unit = 'K';
+					break;
+			}
+		}
+
+		return $num != null && $unit != null ? self::unit_to_mb($num, $unit) : null;
+	}
+	public static function unit_to_mb($value, $current_unit)
+	{
+		$v = null;
+		switch($current_unit)
+		{
+			case 'kb':
+				$v = $value / 1000;
+				break;
+			case 'K':
+				$v = $value / 1024;
+				break;
+			case 'MiB':
+				$v = $value;
+				break;
+		}
+
+		return $v;
 	}
 }
 

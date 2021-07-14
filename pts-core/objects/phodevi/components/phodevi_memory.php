@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2019, Phoronix Media
-	Copyright (C) 2008 - 2019, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	phodevi_memory.php: The PTS Device Interface object for system memory
 
 	This program is free software; you can redistribute it and/or modify
@@ -40,7 +40,7 @@ class phodevi_memory extends phodevi_device_interface
 		$mem_manufacturer = false;
 		$mem_part = false;
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$mem_size = phodevi_osx_parser::read_osx_system_profiler('SPMemoryDataType', 'Size', true, array('Empty'));
 			$mem_speed = phodevi_osx_parser::read_osx_system_profiler('SPMemoryDataType', 'Speed');
@@ -174,7 +174,7 @@ class phodevi_memory extends phodevi_device_interface
 					$mem_prefix .= '-';
 				}
 
-				$mem_prefix .= str_replace(' ', null, $mem_speed);
+				$mem_prefix .= str_replace(' ', '', $mem_speed);
 			}
 
 			// TODO: Allow a combination of both functions below, so like 2 x 2GB + 3 x 1GB DDR2-800
@@ -184,7 +184,7 @@ class phodevi_memory extends phodevi_device_interface
 			}
 			else
 			{
-				$t = str_replace(array(' MB', ' GB'), null, $mem_size[0]);
+				$t = str_replace(array(' MB', ' GB'), '', $mem_size[0]);
 				if(($mem_count * $t) != phodevi::read_property('memory', 'capacity') && phodevi::read_property('memory', 'capacity') % $t == 0)
 				{
 					// This makes sure the correct number of RAM modules is reported...
@@ -213,7 +213,7 @@ class phodevi_memory extends phodevi_device_interface
 					// Cleanup/shorten strings like KHX2133C13S4/4G
 					$mem_part = substr($mem_part, 0, $x);
 				}
-				if(isset($mem_part[2]) && stripos($mem_part, 'part') === false && stripos($mem_part, 'module') === false && stripos($mem_part, 'dimm') === false && substr($mem_part, 0, 2) != '0x' && !isset($mem_part[24]) && pts_strings::is_alnum(str_replace(array('-'), null, $mem_part)))
+				if(isset($mem_part[2]) && stripos($mem_part, 'part') === false && stripos($mem_part, 'module') === false && stripos($mem_part, 'dimm') === false && substr($mem_part, 0, 2) != '0x' && !isset($mem_part[24]) && pts_strings::is_alnum(str_replace(array('-'), '', $mem_part)))
 				{
 					$product_string .= ' ' . $mem_part;
 				}
@@ -302,7 +302,7 @@ class phodevi_memory extends phodevi_device_interface
 
 			$info = ceil(floor($mem_size / 1048576) / 256) * 256;
 		}
-		else if(phodevi::is_macosx())
+		else if(phodevi::is_macos())
 		{
 			$info = phodevi_osx_parser::read_osx_system_profiler('SPHardwareDataType', 'Memory');
 			$info = explode(' ', $info);

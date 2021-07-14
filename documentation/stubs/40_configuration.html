@@ -21,6 +21,8 @@
 <p><strong>~/.phoronix-test-suite/test-suites/</strong></p>
 <p>This is the directory where test suites are stored.</p>
 <h1>Environment Variables</h1>
+<p><strong>TEST_TIMEOUT_AFTER</strong></p>
+<p>When this variable is set, the value will can be set to <em>auto</em> or a positive integer. The value indicates the number of minutes until a test run should be aborted, such as for a safeguard against hung/deadlocked processes or other issues. Setting this to a high number as a backup would be recommended for fending off possible hangs / stalls in the testing process if the test does not quit. If the value is <em>auto</em>, it will quit if the time of a test run exceeds 3x the average time it normally takes the particular test to complete its run. In the future, auto might be enabled by default in a future PTS release.</p>
 <p><strong>TEST_RESULTS_NAME</strong></p>
 <p>When this variable is set, the value will be used as the name for automatically saving the test results.</p>
 <p><strong>TEST_RESULTS_IDENTIFIER</strong></p>
@@ -87,5 +89,7 @@
 <p>If Phodevi fails to detect the system's monitor standard / default resolution, the mode can be specified in this variable. Example: <em>DEFAULT_VIDEO_MODE=1680x1050 phoronix-test-suite benchmark nexuiz</em>.</p>
 <p><strong>SKIP_EXTERNAL_DEPENDENCIES</strong></p>
 <p>To skip the Phoronix Test Suite external dependency checking/installation when installing a test, set this environment variable to <em>1</em>. If wishing to skip only certain external dependencies, set this variable's value to the name of the external dependencies (the generic dependency names used by the Phoronix Test Suite) to not install. Multiple dependencies to skip can be delimited by a comma.</p>
+<p><strong>PTS_EXTRA_SYSTEM_LOGS_DIR</strong></p>
+<p>By default the Phoronix Test Suite collects common system logs (cpuinfo, lscpu, dmesg) during the benchmarking process when saving test results. If wanting to collect additional, arbitrary system log files specific to your operating environment or for other niche system information, the <em>PTS_EXTRA_SYSTEM_LOGS_DIR</em> environment variable can be set as a path to a directory containing such log files. Prior to running the Phoronix Test Suite simply set <em>PTS_EXTRA_SYSTEM_LOGS_DIR</em> to the directory where any text files should be captured from following test completion.</p>
 </body>
 </html>

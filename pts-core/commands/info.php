@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -95,6 +95,10 @@ class info implements pts_option_interface
 				$table[] = array(pts_client::cli_just_bold('Test Status: '), $o->get_status());
 				$table[] = array(pts_client::cli_just_bold('Supported Platforms: '), implode(', ', $o->get_supported_platforms()));
 				$table[] = array(pts_client::cli_just_bold('Project Web-Site: '), $o->get_project_url());
+				if($o->get_repo_url())
+				{
+					$table[] = array(pts_client::cli_just_bold('Source Repository Location: '), $o->get_repo_url());
+				}
 
 				if($o->get_estimated_run_time() > 1)
 				{
@@ -137,7 +141,7 @@ class info implements pts_option_interface
 				if($o->test_installation != false && $o->test_installation->is_installed())
 				{
 					$last_run = $o->test_installation->get_last_run_date();
-					$last_run = $last_run == '0000-00-00' ? 'Never' : $last_run;
+					$last_run = $last_run == '0000-00-00' || empty($last_run) ? 'Never' : $last_run;
 
 					$avg_time = $o->test_installation->get_average_run_time();
 					$avg_time = !empty($avg_time) ? pts_strings::format_time($avg_time, 'SECONDS') : 'N/A';
@@ -260,9 +264,9 @@ class info implements pts_option_interface
 				{
 					echo PHP_EOL . pts_client::cli_just_bold('Contained Tests:') . PHP_EOL;
 					$tt = array_unique($test_titles);
-					sort($tt);
+					natcasesort($tt);
 					echo pts_user_io::display_text_list($tt);
-					echo '  ' . pts_client::cli_just_italic(pts_strings::plural_handler(count($tt), 'Distinct Test Profiles')) . PHP_EOL;
+					echo '  ' . pts_client::cli_just_italic(pts_strings::plural_handler(count($tt), 'Distinct Test Profile')) . PHP_EOL;
 					echo '  ' . pts_client::cli_just_italic(pts_strings::plural_handler($o->get_test_count(), 'Test')) . PHP_EOL;
 					echo '  ' . pts_client::cli_just_italic(pts_strings::plural_handler($o->get_qualified_test_count(), 'Qualified Test')) . PHP_EOL;
 				}

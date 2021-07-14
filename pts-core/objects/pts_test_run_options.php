@@ -22,6 +22,14 @@
 
 class pts_test_run_options
 {
+	public static function header_print_handler(&$test_profile, &$did_print)
+	{
+		if(!$did_print)
+		{
+			pts_client::$display->test_run_configure($test_profile);
+			$did_print = true;
+		}
+	}
 	public static function prompt_user_options(&$test_profile, $preset_selections = null, $no_prompts = false)
 	{
 		$user_args = array();
@@ -49,13 +57,18 @@ class pts_test_run_options
 
 		$identifier_short = $test_profile->get_identifier_base_name();
 		$identifier_full = $test_profile->get_identifier(false);
+		$error_handle = null;
+		$option_objects = $test_profile->get_test_option_objects(true, $error_handle);
 
-		if(count($test_profile->get_test_option_objects()) > 0)
+		$did_print_header = false;
+		if($error_handle)
 		{
-			pts_client::$display->test_run_configure($test_profile);
+			self::header_print_handler($test_profile, $did_print_header);
+			echo PHP_EOL . pts_client::$display->get_tab() . pts_client::cli_just_italic($error_handle) . PHP_EOL;
+			return false;
 		}
 
-		foreach($test_profile->get_test_option_objects() as $i => $o)
+		foreach($option_objects as $i => $o)
 		{
 			$option_identifier = $o->get_identifier();
 
@@ -80,11 +93,13 @@ class pts_test_run_options
 				// User inputs their option as there is nothing to select
 				if(isset($preset_selections[$identifier_short][$option_identifier]))
 				{
+					self::header_print_handler($test_profile, $did_print_header);
 					$value = $preset_selections[$identifier_short][$option_identifier];
 					echo PHP_EOL . '    Using Pre-Set Run Option: ' . $value . PHP_EOL;
 				}
 				else if(isset($preset_selections[$identifier_full][$option_identifier]))
 				{
+					self::header_print_handler($test_profile, $did_print_header);
 					$value = $preset_selections[$identifier_full][$option_identifier];
 					echo PHP_EOL . '    Using Pre-Set Run Option: ' . $value . PHP_EOL;
 				}
@@ -94,6 +109,7 @@ class pts_test_run_options
 				}
 				else
 				{
+					self::header_print_handler($test_profile, $did_print_header);
 					echo PHP_EOL . pts_client::$display->get_tab() . pts_client::cli_just_bold($o->get_name()) . ($o->get_helper_message() ? ' [' . pts_client::cli_just_italic($o->get_helper_message()) . ']' : null) . PHP_EOL;
 					if($o->get_identifier() == 'positive-number')
 					{
@@ -117,11 +133,13 @@ class pts_test_run_options
 				// Have the user select the desired option
 				if(isset($preset_selections[$identifier_short][$option_identifier]))
 				{
+					self::header_print_handler($test_profile, $did_print_header);
 					$bench_choice = $preset_selections[$identifier_short][$option_identifier];
 					echo PHP_EOL . '    Using Pre-Set Run Option: ' . $bench_choice . PHP_EOL;
 				}
 				else if(isset($preset_selections[$identifier_full][$option_identifier]))
 				{
+					self::header_print_handler($test_profile, $did_print_header);
 					$bench_choice = $preset_selections[$identifier_full][$option_identifier];
 					echo PHP_EOL . '    Using Pre-Set Run Option: ' . $bench_choice . PHP_EOL;
 				}
@@ -131,7 +149,7 @@ class pts_test_run_options
 				}
 				else
 				{
-					$option_names = $o->get_all_option_names_with_messages();
+					$option_names = $o->get_all_option_names_with_messages(true);
 
 					if(count($option_names) > 1)
 					{
@@ -142,8 +160,15 @@ class pts_test_run_options
 					{
 						$o_name .= ' [' . pts_client::cli_just_italic($o->get_helper_message()) . ']';
 					}
+					if(count($option_names) != 1)
+					{
+						self::header_print_handler($test_profile, $did_print_header);
+					}
 					$bench_choice = implode(',', pts_user_io::prompt_text_menu($o_name, $option_names, true, true, pts_client::$display->get_tab() . pts_client::$display->get_tab()));
-					echo PHP_EOL;
+					if(count($option_names) != 1)
+					{
+						echo PHP_EOL;
+					}
 				}
 
 				$bench_choice = $o->parse_selection_choice_input($bench_choice);
@@ -177,7 +202,14 @@ class pts_test_run_options
 		$all_args_real = array();
 		$all_args_description = array();
 
-		foreach($test_profile->get_test_option_objects() as $o)
+		$error_handle = null;
+		$option_objects = $test_profile->get_test_option_objects(true, $error_handle);
+		if($error_handle)
+		{
+			echo PHP_EOL . pts_client::$display->get_tab() . pts_client::cli_just_italic($error_handle) . PHP_EOL;
+			return false;
+		}
+		foreach($option_objects as $o)
 		{
 			$option_args = array();
 			$option_args_description = array();
@@ -210,22 +242,63 @@ class pts_test_run_options
 
 		return array($test_args, $test_args_description);
 	}
-	public static function batch_user_options(&$test_profile)
+	public static function batch_user_options(&$test_profile, $option_select = false, $validate_options_now = true)
 	{
 		// Batch mode for single test
 		$batch_all_args_real = array();
 		$batch_all_args_description = array();
 
-		foreach($test_profile->get_test_option_objects() as $o)
+		$error_handle = null;
+		$option_objects = $test_profile->get_test_option_objects(true, $error_handle, $validate_options_now);
+		if($error_handle)
+		{
+			echo PHP_EOL . pts_client::$display->get_tab() . pts_client::cli_just_italic($error_handle) . PHP_EOL;
+			return false;
+		}
+		if($option_select != false)
+		{
+			$os = array();
+			foreach(explode(',', $option_select) as $one)
+			{
+				$one = pts_strings::trim_explode('=', $one);
+				if(count($one) != 2)
+				{
+					continue;
+				}
+				list($oi, $ov) = $one;
+
+				if(!isset($os[$oi]))
+				{
+					$os[$oi] = array();
+				}
+
+				$os[$oi][] = $ov;
+			}
+			$option_select = $os;
+		}
+		foreach($option_objects as $o)
 		{
 			$option_args = array();
 			$option_args_description = array();
-			$option_count = $o->option_count();
 
-			for($i = 0; $i < $option_count; $i++)
+			if($option_select != false && isset($option_select[$o->get_identifier()]))
 			{
-				$option_args[] = $o->format_option_value_from_select($i);
-				$option_args_description[] = $o->format_option_display_from_select($i);
+				for($i = 0; $i < $o->option_count(); $i++)
+				{
+					if(in_array(trim($o->get_option_name($i)), $option_select[$o->get_identifier()]))
+					{
+						$option_args[] = $o->format_option_value_from_select($i);
+						$option_args_description[] = $o->format_option_display_from_select($i);
+					}
+				}
+			}
+			else
+			{
+				for($i = 0; $i < $o->option_count(); $i++)
+				{
+					$option_args[] = $o->format_option_value_from_select($i);
+					$option_args_description[] = $o->format_option_display_from_select($i);
+				}
 			}
 
 			$batch_all_args_real[] = $option_args;
@@ -245,7 +318,7 @@ class pts_test_run_options
 		// In batch mode, find all possible combinations for test options
 		if(count($options) <= $counter)
 		{
-			$return_arr[] = trim($current_string);
+			$return_arr[] = $current_string != null ? trim($current_string) : '';
 		}
 		else
 		{
@@ -264,7 +337,7 @@ class pts_test_run_options
 			}
 		}
 	}
-	public static function auto_process_test_option(&$test_profile, $option_identifier, &$option_names, &$option_values, &$option_messages)
+	public static function auto_process_test_option(&$test_profile, $option_identifier, &$option_names, &$option_values, &$option_messages, &$error = null, $validate_config_options = true)
 	{
 		// Some test items have options that are dynamically built
 		switch($option_identifier)
@@ -307,12 +380,61 @@ class pts_test_run_options
 					}
 				}
 				break;
+			case 'auto-resolution-wide':
+				// Base options off available screen resolutions (wide format)
+				if(count($option_names) == 1 && count($option_values) == 1)
+				{
+					if(PTS_IS_CLIENT && !defined('PHOROMATIC_SERVER'))
+					{
+						$current_resolution = phodevi::read_property('gpu', 'screen-resolution');
+					}
+					else
+					{
+						$current_resolution = array(3840, 2160);
+					}
+
+					$stock_modes = array(
+						array(1280, 960),
+						array(1600, 1200),
+						array(1280, 1024),
+						array(1920, 1080),
+						array(2560, 1080),
+						array(2560, 1440),
+						array(2880, 1620),
+						array(3840, 1600));
+					$available_modes = array();
+
+					for($i = 0; $i < count($stock_modes); $i++)
+					{
+						if($stock_modes[$i][0] <= $current_resolution[0] && $stock_modes[$i][1] <= $current_resolution[1])
+						{
+							array_push($available_modes, $stock_modes[$i]);
+						}
+					}
+
+					$format_name = $option_names[0];
+					$format_value = $option_values[0];
+					$option_names = array();
+					$option_values = array();
+					foreach($available_modes as $video_mode)
+					{
+						$this_name = str_replace('$VIDEO_WIDTH', $video_mode[0], $format_name);
+						$this_name = str_replace('$VIDEO_HEIGHT', $video_mode[1], $this_name);
+
+						$this_value = str_replace('$VIDEO_WIDTH', $video_mode[0], $format_value);
+						$this_value = str_replace('$VIDEO_HEIGHT', $video_mode[1], $this_value);
+
+						$option_names[] = $this_name;
+						$option_values[] = $this_value;
+					}
+				}
+				break;
 			case 'auto-disk-partitions':
 			case 'auto-disk-mount-points':
 				// Base options off available disk partitions
 				if(PTS_IS_CLIENT == false)
 				{
-					echo 'ERROR: This option is not supported in this configuration.';
+					//echo 'ERROR: This option is not supported in this configuration.';
 					return;
 				}
 
@@ -390,7 +512,7 @@ class pts_test_run_options
 				// Base options off attached disks
 				if(PTS_IS_CLIENT == false)
 				{
-					echo 'ERROR: This option is not supported in this configuration.';
+					//echo 'ERROR: This option is not supported in this configuration.';
 					return;
 				}
 
@@ -414,7 +536,7 @@ class pts_test_run_options
 			case 'auto-removable-media':
 				if(PTS_IS_CLIENT == false)
 				{
-					echo 'ERROR: This option is not supported in this configuration.';
+					//echo 'ERROR: This option is not supported in this configuration.';
 					return;
 				}
 
@@ -430,7 +552,7 @@ class pts_test_run_options
 			case 'auto-file-select':
 				if(PTS_IS_CLIENT == false)
 				{
-					echo 'ERROR: This option is not supported in this configuration.';
+					//echo 'ERROR: This option is not supported in this configuration.';
 					return;
 				}
 
@@ -472,7 +594,7 @@ class pts_test_run_options
 			case 'auto-directory-select':
 				if(PTS_IS_CLIENT == false)
 				{
-					echo 'ERROR: This option is not supported in this configuration.';
+					//echo 'ERROR: This option is not supported in this configuration.';
 					return;
 				}
 
@@ -563,16 +685,23 @@ class pts_test_run_options
 				$values = $option_values;
 				$option_names = array();
 				$option_values = array();
+				$had_valid_fail = false;
 
 				for($i = 0; $i < count($names) && $i < count($values); $i++)
 				{
-					if(self::validate_test_arguments_compatibility($names[$i], $test_profile) == false)
+					if($validate_config_options && self::validate_test_arguments_compatibility($names[$i], $test_profile) == false)
 					{
+						$had_valid_fail = true;
 						continue;
 					}
 
 					$option_names[] = $names[$i];
 					$option_values[] = $values[$i];
+				}
+				if($had_valid_fail && empty($option_names))
+				{
+					$error = 'No supported options found for ' . $option_identifier;
+					return -1;
 				}
 				break;
 			default:
@@ -585,16 +714,23 @@ class pts_test_run_options
 				$values = $option_values;
 				$option_names = array();
 				$option_values = array();
+				$had_valid_fail = false;
 
 				for($i = 0; $i < count($names) && $i < count($values); $i++)
 				{
-					if(self::validate_test_arguments_compatibility($names[$i], $test_profile) == false)
+					if($validate_config_options && self::validate_test_arguments_compatibility($names[$i], $test_profile) == false)
 					{
+						$had_valid_fail = true;
 						continue;
 					}
 
 					$option_names[] = $names[$i];
 					$option_values[] = $values[$i];
+				}
+				if($had_valid_fail && empty($option_names))
+				{
+					$error = 'No supported options found for ' . $option_identifier;
+					return -1;
 				}
 				break;
 		}
@@ -612,6 +748,12 @@ class pts_test_run_options
 			$error = 'Direct3D renderer is not supported here.';
 			return false;
 		}
+		if(strpos($test_args, 'Apple ') !== false && phodevi::os_under_test() != 'MacOSX')
+		{
+			// Only show Apple (namely Metal) renderer options when running on macOS
+			$error = 'Apple option is not supported here.';
+			return false;
+		}
 		if((stripos($test_args, 'NVIDIA ') !== false || stripos($test_args . ' ', 'CUDA ') !== false) && stripos(phodevi::read_property('gpu', 'model'), 'NVIDIA') === false)
 		{
 			// Only show NVIDIA / CUDA options when running with NVIDIA hardware
@@ -622,6 +764,18 @@ class pts_test_run_options
 		{
 			// Only show NVIDIA / CUDA options when running with NVIDIA hardware
 			$error = 'NVIDIA support is not available.';
+			return false;
+		}
+		if(stripos($test_args, 'OpenCL') !== false && phodevi::opencl_support_detected() === false)
+		{
+			// Try to only show OpenCL configurations if known to be working
+			$error = 'OpenCL support seems to be unavailable.';
+			return false;
+		}
+		if(stripos($test_args, 'Vulkan') !== false && phodevi::vulkan_support_detected() === false)
+		{
+			// Try to only show Vulkan configurations if known to be working
+			$error = 'Vulkan support seems to be unavailable.';
 			return false;
 		}
 		if(stripos($test_args, 'Windows') !== false && !phodevi::is_windows())

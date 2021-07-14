@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -73,7 +73,7 @@ class pts_tests
 	{
 		$error = null;
 
-		foreach(array('fatal error', 'error while loading', 'undefined reference', 'cannot find -l', 'error:', 'returned 1 exit status', 'not found', 'child process excited with status', 'error opening archive', 'failed to load', 'fatal', 'illegal argument', 'is required to build') as $error_string)
+		foreach(array('fatal error', 'error while loading', 'undefined reference', 'cannot find -l', 'error:', 'returned 1 exit status', 'not found', 'child process excited with status', 'error opening archive', 'failed to load', 'fatal', 'illegal argument', 'is required to build', 'or higher is required') as $error_string)
 		{
 			$lf = $log_file;
 			if(($e = strripos($lf, $error_string)) !== false)
@@ -88,7 +88,7 @@ class pts_tests
 					$lf = substr($lf, ($line_start_e + 1));
 				}
 
-				$lf = str_replace(array(PTS_TEST_PROFILE_PATH, $strip_string), null, $lf);
+				$lf = str_replace(array(PTS_TEST_PROFILE_PATH, $strip_string), '', $lf);
 
 				if(isset($lf[8]) && substr($lf, -7) == 'error: ')
 				{
@@ -276,7 +276,7 @@ class pts_tests
 
 		return $extra_vars;
 	}
-	public static function call_test_script($test_profile, $script_name, $print_string = null, $pass_argument = null, $extra_vars_append = null, $use_ctp = true)
+	public static function call_test_script($test_profile, $script_name, $print_string = null, $pass_argument = null, $extra_vars_append = null, $use_ctp = true, $no_prompts = false)
 	{
 		$extra_vars = pts_tests::extra_environmental_variables($test_profile);
 
@@ -363,11 +363,15 @@ class pts_tests
 					}
 					else
 					{
+						if($script_name == 'install' && $no_prompts == false && $test_profile->is_root_install_required() && !phodevi::is_root())
+						{
+							$sh .= ' ' . PTS_CORE_STATIC_PATH . 'root-access.sh';
+						}
 						$this_result = pts_client::shell_exec('cd ' .  $test_directory . (phodevi::is_windows() ? '; ' : ' && ') . $sh . ' ' . $run_file . ' ' . $pass_argument . (phodevi::is_windows() ? '' : ' 2>&1'), $extra_vars);
 					}
 				}
 
-				if(trim($this_result) != null)
+				if($this_result && trim($this_result) != null)
 				{
 					$result = $this_result;
 				}
@@ -384,215 +388,6 @@ class pts_tests
 			return true;
 		}
 		return false;
-	}
-	public static function update_test_install_xml(&$test_profile, $this_duration = 0, $is_install = false, $compiler_data = null, $install_footnote = null)
-	{
-		// Refresh/generate an install XML for pts-install.xml
-		if($test_profile->test_installation == false)
-		{
-			$test_profile->test_installation = new pts_installed_test($test_profile);
-		}
-		$xml_writer = new nye_XmlWriter('file://' . PTS_USER_PATH . 'xsl/' . 'pts-test-installation-viewer.xsl');
-
-		$test_duration = $test_profile->test_installation->get_average_run_time();
-
-		// When run count is higher due to forcing it with env vars, don't factor it into average to throw out the numbering...
-		$record_avg_run_time = $test_profile->get_default_times_to_run() == $test_profile->get_times_to_run();
-		if($record_avg_run_time)
-		{
-			if(!is_numeric($test_duration) && !$is_install)
-			{
-				$test_duration = $this_duration;
-			}
-			if(!$is_install && is_numeric($this_duration) && $this_duration > 0)
-			{
-				$test_duration = ceil((($test_duration * $test_profile->test_installation->get_run_count()) + $this_duration) / ($test_profile->test_installation->get_run_count() + 1));
-			}
-		}
-
-		$compiler_data = $is_install ? $compiler_data : $test_profile->test_installation->get_compiler_data();
-		$install_footnote = $is_install ? $install_footnote : $test_profile->test_installation->get_install_footnote();
-		$test_version = $is_install ? $test_profile->get_test_profile_version() : $test_profile->test_installation->get_installed_version();
-		$test_checksum = $is_install ? $test_profile->get_installer_checksum() : $test_profile->test_installation->get_installed_checksum();
-		$sys_identifier = $is_install ? phodevi::system_id_string() : $test_profile->test_installation->get_installed_system_identifier();
-		$install_time = $is_install ? date('Y-m-d H:i:s') : $test_profile->test_installation->get_install_date_time();
-		$install_time_length = $is_install ? $this_duration : $test_profile->test_installation->get_latest_install_time();
-		$latest_run_time = $is_install || $this_duration == 0 ? $test_profile->test_installation->get_latest_run_time() : $this_duration;
-
-		$times_run = $test_profile->test_installation->get_run_count();
-
-		if($is_install)
-		{
-			$last_run = $latest_run_time;
-
-			if(empty($last_run))
-			{
-				$last_run = '0000-00-00 00:00:00';
-			}
-		}
-		else
-		{
-			$last_run = date('Y-m-d H:i:s');
-			$times_run++;
-		}
-
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/Environment/Identifier', $test_profile->get_identifier());
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/Environment/Version', $test_version);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/Environment/CheckSum', $test_checksum);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/Environment/CompilerData', json_encode($compiler_data));
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/Environment/InstallFootnote', $install_footnote);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/Environment/SystemIdentifier', $sys_identifier);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/History/InstallTime', $install_time);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/History/InstallTimeLength', $install_time_length);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/History/LastRunTime', $last_run);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/History/TimesRun', $times_run);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/History/AverageRunTime', $test_duration);
-		$xml_writer->addXmlNode('PhoronixTestSuite/TestInstallation/History/LatestRunTime', $latest_run_time);
-
-		$xml_writer->saveXMLFile($test_profile->get_install_dir() . 'pts-install.xml');
-	}
-	public static function invalid_command_helper($passed_args, &$argument_checks)
-	{
-		$supports_passing_a_test = false;
-		foreach($argument_checks as $check)
-		{
-			if($check->get_function_check_type() == 'Test' || strpos($check->get_function_check_type(), 'Test |') !== false)
-			{
-				$supports_passing_a_test = true;
-			}
-		}
-
-		$showed_recent_results = self::recently_saved_results();
-
-		if($supports_passing_a_test)
-		{
-			$tests_to_show = array_keys(pts_openbenchmarking_client::new_and_recently_updated_tests(14, 20));
-			$tests_to_show_title = 'New + Updated Tests';
-
-			if(count($tests_to_show) < 2)
-			{
-				$tests_to_show = array_keys(pts_openbenchmarking_client::most_popular_tests(20));
-				$tests_to_show_title = 'Popular Tests';
-			}
-
-			if(count($tests_to_show) > 3)
-			{
-				$longest_test = strlen(pts_strings::find_longest_string($tests_to_show)) + 3;
-				$terminal_width = pts_client::terminal_width();
-				$tests_per_line = floor($terminal_width / $longest_test);
-				shuffle($tests_to_show);
-				$tests_to_show = array_slice($tests_to_show, 0, min(count($tests_to_show), $tests_per_line * 2 -1));
-
-				echo pts_client::cli_just_bold($tests_to_show_title . ':') . PHP_EOL;
-				$i = 0;
-				foreach($tests_to_show as $test)
-				{
-					if($i % $tests_per_line == 0)
-					{
-						echo '   ';
-					}
-					echo $test . str_repeat(' ', $longest_test - strlen($test));
-
-					$i++;
-					if($i % $tests_per_line == 0 || $i == count($tests_to_show))
-					{
-						echo PHP_EOL;
-					}
-				}
-			}
-		}
-
-		if(count($result_uploads = pts_openbenchmarking::result_uploads_from_this_ip()) > 0)
-		{
-			echo PHP_EOL . pts_client::cli_just_bold('Recent OpenBenchmarking.org Results From This IP:') . PHP_EOL;
-			$t = array();
-			foreach($result_uploads as $id => $title)
-			{
-				$t[] = array(pts_client::cli_colored_text($id, 'gray', true), $title);
-
-				if(count($t) == 5)
-				{
-					break;
-				}
-			}
-			echo pts_user_io::display_text_table($t, '   ') . PHP_EOL . PHP_EOL;
-		}
-
-		$similar_tests = array();
-		if(!empty($passed_args))
-		{
-			foreach(pts_arrays::to_array($passed_args) as $passed_arg)
-			{
-				$arg_soundex = soundex($passed_arg);
-				$arg_save_identifier_like = pts_test_run_manager::clean_save_name($passed_arg);
-
-				foreach(pts_openbenchmarking::linked_repositories() as $repo)
-				{
-					$repo_index = pts_openbenchmarking::read_repository_index($repo);
-
-					foreach(array('tests', 'suites') as $type)
-					{
-						if(isset($repo_index[$type]) && is_array($repo_index[$type]))
-						{
-							foreach(array_keys($repo_index[$type]) as $identifier)
-							{
-								if(soundex($identifier) == $arg_soundex)
-								{
-									pts_arrays::unique_push($similar_tests, array($identifier, ' [' . ucwords(substr($type, 0, -1)) . ']'));
-								}
-								else if(isset($passed_arg[3]) && strpos($identifier, $passed_arg) !== false)
-								{
-									pts_arrays::unique_push($similar_tests, array($identifier, ' [' . ucwords(substr($type, 0, -1)) . ']'));
-								}
-							}
-						}
-					}
-				}
-
-				foreach(pts_results::saved_test_results() as $result)
-				{
-					if(soundex($result) == $arg_soundex || (isset($passed_arg[3]) && strpos($identifier, $arg_save_identifier_like) !== false))
-					{
-						pts_arrays::unique_push($similar_tests, array($result, ' [Test Result]'));
-					}
-				}
-
-				if(strpos($passed_arg, '-') !== false)
-				{
-					$possible_identifier = str_replace('-', '', $passed_arg);
-					if(pts_test_profile::is_test_profile($possible_identifier))
-					{
-						pts_arrays::unique_push($similar_tests, array($possible_identifier, ' [Test]'));
-					}
-				}
-				if($passed_arg != ($possible_identifier = strtolower($passed_arg)))
-				{
-					if(pts_test_profile::is_test_profile($possible_identifier))
-					{
-						pts_arrays::unique_push($similar_tests, array($possible_identifier, ' [Test]'));
-					}
-				}
-			}
-		}
-		if(count($similar_tests) > 0)
-		{
-			echo pts_client::cli_just_bold('Possible Suggestions:') . PHP_EOL;
-			//$similar_tests = array_unique($similar_tests);
-			if(isset($similar_tests[12]))
-			{
-				// lots of tests... trim it down
-				$similar_tests = array_rand($similar_tests, 12);
-			}
-			echo pts_user_io::display_text_table($similar_tests, '- ') . PHP_EOL . PHP_EOL;
-		}
-
-		if($showed_recent_results == false)
-		{
-			echo 'See available tests to run by visiting OpenBenchmarking.org or running:' . PHP_EOL . PHP_EOL;
-			echo '    phoronix-test-suite list-tests' . PHP_EOL . PHP_EOL;
-			echo 'Tests can be installed by running:' . PHP_EOL . PHP_EOL;
-			echo '    phoronix-test-suite install <test-name>' . PHP_EOL . PHP_EOL;
-		}
 	}
 	public static function recently_saved_results($extra_space = null)
 	{

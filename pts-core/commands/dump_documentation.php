@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2010 - 2019, Phoronix Media
-	Copyright (C) 2010 - 2019, Michael Larabel
+	Copyright (C) 2010 - 2021, Phoronix Media
+	Copyright (C) 2010 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -204,7 +204,7 @@ class dump_documentation implements pts_option_interface
 
 		foreach(pts_virtual_test_suite::available_virtual_suites() as $virtual_suite)
 		{
-			$sub_header = $dom->createElement('h3', $virtual_suite->get_title());
+			$sub_header = $dom->createElement('h3', ucwords($virtual_suite->get_title()));
 			$em = $dom->CreateElement('em', '  ' . $virtual_suite->get_identifier());
 			$sub_header->appendChild($em);
 			$body->appendChild($sub_header);
@@ -260,7 +260,7 @@ class dump_documentation implements pts_option_interface
 					$man_page .= '.B ' . trim($option[0] . ' ' . (!empty($option[1]) && is_array($option[1]) ? implode(' ', $option[1]) : null)) . PHP_EOL . $option[2] . PHP_EOL . '.TP' . PHP_EOL;
 				}
 			}
-			$man_page .= '.SH SEE ALSO' . PHP_EOL . '.B Websites:' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://commercial.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.openbenchmarking.org/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix.com/forums/' . PHP_EOL;
+			$man_page .= '.SH SEE ALSO' . PHP_EOL . '.B Websites:' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://commercial.phoronix-test-suite.com/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.openbenchmarking.org/' . PHP_EOL . '.br' . PHP_EOL . 'https://www.phoronix.com/' . PHP_EOL . '.br' . PHP_EOL;
 			$man_page .= '.SH AUTHORS' . PHP_EOL . 'Copyright 2008 - ' . date('Y') . ' by Phoronix Media, Michael Larabel.' . PHP_EOL . '.TP' . PHP_EOL;
 
 			file_put_contents(PTS_PATH . 'documentation/man-pages/phoronix-test-suite.1', $man_page);
@@ -274,32 +274,9 @@ class dump_documentation implements pts_option_interface
 		$readme = wordwrap($readme, 80, PHP_EOL);
 		file_put_contents(PTS_PATH . 'README.md', $readme);
 
-		// Phoromatic Documentation
-		$pdf = new pts_pdf_template(pts_core::program_title(false), 'Phoromatic Documentation');
-		$html_doc = new pts_html_template(pts_core::program_title(false), 'Phoromatic Documentation');
-
-		$pdf->AddPage();
-		$pdf->Image(PTS_CORE_STATIC_PATH . 'images/pts-308x160.png', 69, 85, 73, 38, 'PNG', 'https://www.phoronix-test-suite.com/');
-		$pdf->Ln(120);
-		$pdf->WriteStatement('www.phoronix-test-suite.com', 'C', 'https://www.phoronix-test-suite.com/');
-		$pdf->Ln(15);
-		$pdf->Image(PTS_CORE_STATIC_PATH . 'images/phoromatic-390x56.png', 55, 250, 0, 0, 'PNG', 'https://www.phoronix-test-suite.com/');
-		//$pdf->Image(PTS_CORE_STATIC_PATH . 'images/phoromatic-390x56.png', 69, 85, 73, 38, 'PNG', 'https://www.phoromatic.com/');
-		$pdf->WriteBigHeaderCenter(pts_core::program_title(true));
-		$pdf->WriteHeaderCenter('Phoromatic User Manual');
-		$pdf->html_to_pdf(PTS_PATH . 'documentation/phoromatic.html');
-		$pdf_file = PTS_PATH . 'documentation/phoromatic.pdf';
-		$pdf->Output($pdf_file);
-
-		echo PHP_EOL . 'Saved To: ' . $pdf_file . PHP_EOL . PHP_EOL;
-
-		$md = new pts_md_template();
-		$md->html_to_md(PTS_PATH . 'documentation/phoromatic.html');
-		$md->Output(PTS_PATH . 'documentation/phoromatic.md');
-
-		$md = new pts_md_template();
-		$md->html_to_md(PTS_PATH . 'documentation/phoronix-test-suite-windows.html');
-		$md->Output(PTS_PATH . 'documentation/phoronix-test-suite-window.md');
+		//$md = new pts_md_template();
+		//$md->html_to_md(PTS_PATH . 'documentation/phoronix-test-suite-windows.html');
+		//$md->Output(PTS_PATH . 'documentation/phoronix-test-suite-window.md');
 
 	}
 }

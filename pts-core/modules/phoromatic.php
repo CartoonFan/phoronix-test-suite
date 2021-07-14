@@ -282,12 +282,13 @@ class phoromatic extends pts_module_interface
 		$to_post['pts'] = PTS_VERSION;
 		$to_post['pts_core'] = PTS_CORE_VERSION;
 		$to_post['gsid'] = defined('PTS_GSID') ? PTS_GSID : null;
-		$to_post['lip'] = pts_network::get_local_ip();
+		$to_post['lip'] = phodevi::read_property('network', 'ip');
 		$to_post['h'] = phodevi::system_hardware(true);
-		$to_post['nm'] = pts_network::get_network_mac();
+		$to_post['nm'] = phodevi::read_property('network', 'mac-address');
 		$to_post['nw'] = implode(', ', pts_network::get_network_wol());
 		$to_post['s'] = phodevi::system_software(true);
 		$to_post['n'] = phodevi::read_property('system', 'hostname');
+		$to_post['pp'] = json_encode(phodevi::read_all_properties());
 		$to_post['msi'] = PTS_MACHINE_SELF_ID;
 		return pts_network::http_upload_via_post('http://' . $server_address . ':' . $server_http_port .  '/phoromatic.php', $to_post, false);
 	}
@@ -581,7 +582,12 @@ class phoromatic extends pts_module_interface
 					}
 				}
 
-				switch(isset($json['phoromatic']['task']) ? $json['phoromatic']['task'] : null)
+				$task = isset($json['phoromatic']['task']) ? $json['phoromatic']['task'] : null;
+
+				if ($task != 'idle')
+					pts_client::$pts_logger->log("Received " . $json['phoromatic']['task'] . " command");
+
+				switch($task)
 				{
 					case 'install':
 						phoromatic::update_system_status('Installing Tests');
@@ -604,6 +610,7 @@ class phoromatic extends pts_module_interface
 						$benchmark_ticket_id = isset($json['phoromatic']['benchmark_ticket_id']) ? $json['phoromatic']['benchmark_ticket_id'] : null;
 						self::$benchmark_ticket_id = $benchmark_ticket_id;
 						phoromatic::update_system_status('Running Benchmarks For: ' . $phoromatic_save_identifier);
+						pts_client::$skip_log_file_type_checks = isset($json['phoromatic']['settings']['AllowAnyDataForLogFiles']) && pts_strings::string_bool($json['phoromatic']['settings']['AllowAnyDataForLogFiles']);
 
 						if(pts_strings::string_bool($json['phoromatic']['settings']['RunInstallCommand']))
 						{
@@ -935,8 +942,9 @@ class phoromatic extends pts_module_interface
 		{
 			foreach($server_response['phoromatic']['results'] as $pprid => $result)
 			{
-				echo sprintf('%-26ls - %-25ls - %-30ls', $result['Title'], $pprid, date('j M H:i', strtotime($result['UploadTime']))) . PHP_EOL;
-				echo sprintf('    %-20ls - %-25ls' . PHP_EOL, $result['SystemName'], $result['GroupName']) . PHP_EOL;
+				echo pts_client::cli_just_bold($result['Title']) . ' ' . $pprid . ' ' . date('j M H:i', strtotime($result['UploadTime'])) . PHP_EOL;
+				echo '   ' . $result['SystemName'] . ' ' . $result['GroupName'];
+				echo PHP_EOL . PHP_EOL;
 			}
 		}
 		else
@@ -1016,7 +1024,7 @@ class phoromatic extends pts_module_interface
 			$env_vars['PHOROMATIC_SCHEDULE_ID'] = $schedule_id;
 			$env_vars['PHOROMATIC_SCHEDULE_PROCESS'] = $process;
 			$env_vars['PHOROMATIC_LOG_FILE'] = $notes_log_file;
-			$log_output = pts_client::shell_exec('./' . $context_script . ' ' . $trigger . ' 2>&1', $env_vars);
+			$log_output = pts_client::shell_exec($context_file . ' ' . $trigger . ' 2>&1', $env_vars);
 			self::check_user_context_log($trigger, $schedule_id, $process, $notes_log_file, $log_output);
 
 			// Just simply return true for now, perhaps check exit code status and do something
@@ -1098,7 +1106,7 @@ class phoromatic extends pts_module_interface
 			ceil(self::$test_run_manager->get_estimated_run_time() / 60),
 			self::$test_run_manager->get_percent_complete(),
 			null,
-			ceil($pts_test_result->test_profile->get_estimated_run_time() / 60));
+			ceil($pts_test_result->get_estimated_run_time() / 60));
 	}
 	public static function __event_results_saved($test_run_manager)
 	{

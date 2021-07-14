@@ -204,7 +204,7 @@ class system_monitor extends pts_module_interface
 		echo PHP_EOL;
 		foreach(self::$monitor_pids as $pid)
 		{
-			if(function_exists('posix_kill'))
+			if(function_exists('posix_kill') && defined('SIGTERM'))
 			{
 				posix_kill($pid, SIGTERM);
 			}
@@ -612,7 +612,7 @@ class system_monitor extends pts_module_interface
 	{
 		foreach(self::$perf_per_sensor as $i => $s)
 		{
-			$sensor_results = self::parse_monitor_log('logs/' . phodevi::sensor_identifier($s), self::$individual_test_run_offsets[phodevi::sensor_identifier($s)]);
+			$sensor_results = self::parse_monitor_log('logs/' . phodevi::sensor_identifier($s), (isset(self::$individual_test_run_offsets[phodevi::sensor_identifier($s)]) ? self::$individual_test_run_offsets[phodevi::sensor_identifier($s)] : 0));
 
 			if(count($sensor_results) > 2 && self::$successful_test_run_request)
 			{
@@ -643,7 +643,7 @@ class system_monitor extends pts_module_interface
 					if($test_result->test_profile->get_result_proportion() == 'HIB')
 					{
 						$test_result->test_profile->set_result_scale($test_result->test_profile->get_result_scale() . ' Per ' . $unit);
-						$test_result->test_result_buffer->add_test_result(self::$result_identifier, pts_math::set_precision($test_result->active->get_result() / $res_average));
+						$test_result->test_result_buffer->add_test_result(self::$result_identifier, round($test_result->active->get_result() / $res_average, 3));
 						$ro = $result_file->add_result_return_object($test_result);
 					}
 					else if($test_result->test_profile->get_result_proportion() == 'LIB')
@@ -651,7 +651,7 @@ class system_monitor extends pts_module_interface
 						return; // with below code not rendering nicely
 						$test_result->test_profile->set_result_proportion('HIB');
 						$test_result->test_profile->set_result_scale('Performance Per ' . $unit);
-						$test_result->test_result_buffer->add_test_result(self::$result_identifier, pts_math::set_precision((1 / $test_result->active->get_result()) / $res_average));
+						$test_result->test_result_buffer->add_test_result(self::$result_identifier, round((1 / $test_result->active->get_result()) / $res_average, 3));
 						$ro = $result_file->add_result_return_object($test_result);
 					}
 					if($ro)

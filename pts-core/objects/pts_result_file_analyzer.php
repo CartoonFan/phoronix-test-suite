@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2010 - 2020, Phoronix Media
-	Copyright (C) 2010 - 2020, Michael Larabel
+	Copyright (C) 2010 - 2021, Phoronix Media
+	Copyright (C) 2010 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -209,9 +209,14 @@ class pts_result_file_analyzer
 			$test_result->set_used_arguments($title_prepend . ' ' . $test_result->get_arguments());
 			$test_result->test_result_buffer = new pts_test_result_buffer();
 
+			$iv_map = $result_object->test_result_buffer->get_identifier_value_map();
 			foreach($identifier_mapping as $identifier => $value)
 			{
-				$result = $result_object->test_result_buffer->get_value_from_identifier($identifier);
+				if(!isset($iv_map[$identifier]))
+				{
+					continue;
+				}
+				$result = $iv_map[$identifier];
 
 				if($result_object->test_profile->get_result_proportion() == 'HIB')
 				{
@@ -227,7 +232,15 @@ class pts_result_file_analyzer
 
 				if($result != 0)
 				{
-					$test_result->test_result_buffer->add_test_result($identifier, $result, null, array('install-footnote' => 'Detected ' . strtolower($unit) . ' count of ' . $value));
+					if($title_prepend == 'Performance Per Clock')
+					{
+						$d = 'GHz base clock speed (use PTS sensors for real-time frequency/sensor reporting)';
+					}
+					else
+					{
+						$d = strtolower($unit);
+					}
+					$test_result->test_result_buffer->add_test_result($identifier, $result, null, array('install-footnote' => 'Detected ' . $d . ' count of ' . $value));
 					$added_count++;
 				}
 			}
@@ -241,39 +254,101 @@ class pts_result_file_analyzer
 
 		return false;
 	}
-	public static function generate_perf_per_dollar(&$result_file, $identifier, $value, $unit = 'Dollar')
+	public static function generate_perf_per_dollar(&$input, $generate, $unit = 'Dollar', $yield_on_unqualified_ros = false, $per_hour = false)
 	{
-		foreach($result_file->get_result_objects() as $result_object)
+		if($input instanceof pts_result_file)
 		{
-			$result = $result_object->test_result_buffer->get_value_from_identifier($identifier);
-			if($result_object->test_profile->get_identifier() != null && $result_object->test_profile->get_display_format() == 'BAR_GRAPH' && is_numeric($result) && $result > 0)
-			{
-				if($result_object->test_profile->get_result_proportion() == 'HIB')
-				{
-					$result = pts_math::set_precision($result / $value, 3);
-					$scale = $result_object->test_profile->get_result_scale() . ' Per ' . $unit;
-				}
-				else if($result_object->test_profile->get_result_proportion() == 'LIB')
-				{
-					$result = pts_math::set_precision($result * $value, 3);
-					$scale = $result_object->test_profile->get_result_scale() . ' x ' . $unit;
-				}
-				else
-				{
-					break;
-				}
+			$result_file = &$input;
+			$ros = $input->get_result_objects();
+		}
+		else if($input instanceof pts_test_result)
+		{
+			$result_file = false;
+			$ros = array($input);
+		}
 
-				if($result != 0)
+		foreach($ros as &$result_object)
+		{
+			if((!$yield_on_unqualified_ros && $result_object->test_profile->get_identifier() == null) || $result_object->test_profile->get_display_format() != 'BAR_GRAPH')
+			{
+				continue;
+			}
+
+			$computed = array();
+			$footnotes = array();
+			$bi_map = $result_object->test_result_buffer->get_map_by_identifier();
+			foreach($generate as $identifier => $value)
+			{
+				if(!isset($bi_map[$identifier]))
 				{
-					pts_result_file_analyzer::add_perf_per_graph($result_file, $result_object, $identifier, $result, $scale, '$' . $value . ' reported cost.');
+					continue;
+				}
+				$result = $bi_map[$identifier]->get_result_value();
+				if(is_numeric($result) && $result > 0)
+				{
+					if($per_hour)
+					{
+						$test_run_times = $bi_map[$identifier]->get_run_times();
+						if(!empty($test_run_times))
+						{
+							$avg_time = round(array_sum($test_run_times) / count($test_run_times));
+							// Cost-perf-per-hour calculation, e.g. cloud costs...
+							// self::$TEST_RUN_TIME_ELAPSED is seconds run.....
+							$cost_to_run_test = round(($value / 60 / 60) * $avg_time, 3);
+
+							if($cost_to_run_test < 0.01)
+							{
+								continue;
+							}
+
+							$footnotes[$identifier] = '$' . $value . ' reported cost per hour, test took average of ' . ($avg_time < 240 ? $avg_time . ' seconds ' : strtolower(pts_strings::format_time($avg_time))) . ' per run: cost approximately ' . $cost_to_run_test . ' ' . strtolower($unit) . 's.';
+							$value = $cost_to_run_test;
+						}
+					}
+
+					if($result_object->test_profile->get_result_proportion() == 'HIB')
+					{
+						$result = $result / $value;
+						$result = pts_math::set_precision($result, ($result > 0.1 ? 3 : 8));
+						$scale = $result_object->test_profile->get_result_scale() . ' Per ' . $unit;
+					}
+					else if($result_object->test_profile->get_result_proportion() == 'LIB')
+					{
+						$result = pts_math::set_precision($result * $value, 3);
+						$scale = $result_object->test_profile->get_result_scale() . ' x ' . $unit;
+					}
+					else
+					{
+						continue;
+					}
+
+					if($result != 0)
+					{
+						$computed[$identifier] = $result;
+						if(!isset($footnotes[$identifier]))
+						{
+							$footnotes[$identifier] = '$' . $value . ' reported cost.';
+						}
+					}
+				}
+			}
+
+			if(!empty($computed))
+			{
+				$ret = pts_result_file_analyzer::add_perf_per_graph($result_file, $result_object, $computed, $scale, $footnotes);
+				if($result_file == false && $ret)
+				{
+					return $ret;
 				}
 			}
 		}
 	}
-	public static function add_perf_per_graph(&$result_file, $test_result, $result_identifier, $result, $scale, $footnote = null)
+	public static function add_perf_per_graph(&$result_file, $test_result, $results, $scale, $footnote = null)
 	{
-		if(empty($result))
+		if(empty($results))
+		{
 			return false;
+		}
 
 		// This copy isn't needed but it's shorter and from port from system_monitor where there can be multiple items tracked
 		$original_parent_hash = $test_result->get_comparison_hash(true, false);
@@ -283,23 +358,34 @@ class pts_result_file_analyzer
 		$test_result->set_used_arguments('dollar comparison ' . $test_result->get_arguments());
 		$test_result->test_profile->set_result_scale($scale);
 		$test_result->test_result_buffer = new pts_test_result_buffer();
-		$test_result->test_result_buffer->add_test_result($result_identifier, $result, null, array('install-footnote' => $footnote));
+		foreach($results as $result_identifier => $result)
+		{
+			$test_result->test_result_buffer->add_test_result($result_identifier, $result, null, array('install-footnote' => (isset($footnote[$result_identifier]) ? $footnote[$result_identifier] : null)));
+		}
 		$test_result->set_parent_hash($original_parent_hash);
-		$result_file->add_result($test_result);
-	}
-	public static function generate_executive_summary($result_file, $selected_result = null,  &$error = null)
-	{
-		$summary = null;
 
-		if($result_file->get_test_count() < 10)
+		if($result_file)
+		{
+			$result_file->add_result($test_result);
+		}
+		else
+		{
+			return $test_result;
+		}
+	}
+	public static function generate_executive_summary($result_file, $selected_result = null,  &$error = null, $separator = PHP_EOL, $do_html = false)
+	{
+		$summary = array();
+
+		if($result_file->get_test_count() < 6)
 		{
 			$error = 'Not enough tests to analyze...';
-			return false;
+			return $summary;
 		}
 		if($result_file->get_system_count() < 2)
 		{
 			$error = 'Not enough results to analyze...';
-			return false;
+			return $summary;
 		}
 
 		$wins_result = pts_result_file_analyzer::generate_wins_losses_results($result_file, true);
@@ -307,63 +393,73 @@ class pts_result_file_analyzer
 
 		if($selected_result && ($sw = $wins_result->test_result_buffer->find_buffer_item($selected_result)))
 		{
+			if($do_html)
+			{
+				$selected_result = '<strong>' . $selected_result . '</strong>';
+			}
 			$summary[] = $selected_result . ' came in first place for ' . floor($sw->get_result_value() / $wins_result->test_result_buffer->get_total_value_sum() * 100) . '% of the tests.';
 		}
-
-		if($first_place_buffer->get_result_identifier() != $selected_result)
+		else if($first_place_buffer->get_result_identifier() != $selected_result)
 		{
 			// Most wins
+			$selected_result = $first_place_buffer->get_result_identifier();
+			if($do_html)
+			{
+				$selected_result = '<strong>' . $selected_result . '</strong>';
+			}
 			$summary[] = $first_place_buffer->get_result_identifier() . ' had the most wins, coming in first place for ' . floor($first_place_buffer->get_result_value() / $wins_result->test_result_buffer->get_total_value_sum() * 100) . '% of the tests.';
 		}
 
 		$geo_mean_result = pts_result_file_analyzer::generate_geometric_mean_result($result_file, true);
-		$first_place_buffer = $geo_mean_result->test_result_buffer->get_max_value(2);
-		$last_place_buffer = $geo_mean_result->test_result_buffer->get_min_value(2);
-
-		$geo_bits = array();
-		if($result_file->get_system_count() >= 3)
+		if($geo_mean_result)
 		{
-			$prev_buffer = null;
-			foreach($geo_mean_result->test_result_buffer->get_buffer_items() as $bi)
+			$first_place_buffer = $geo_mean_result->test_result_buffer->get_max_value(2);
+			$last_place_buffer = $geo_mean_result->test_result_buffer->get_min_value(2);
+			$geo_bits = array();
+			if($result_file->get_system_count() >= 3)
 			{
-				if($prev_buffer == null)
+				$prev_buffer = null;
+				foreach($geo_mean_result->test_result_buffer->get_buffer_items() as $bi)
 				{
+					if($prev_buffer == null)
+					{
+						$prev_buffer = $bi;
+						continue;
+					}
+					$rounded = round($bi->get_result_value() / $prev_buffer->get_result_value(), 3) . 'x';
+					if($rounded === '1.000x')
+					{
+						continue;
+					}
+					$geo_bits[] = $bi->get_result_identifier() . ' was ' . $rounded . ' the speed of ' . $prev_buffer->get_result_identifier();
 					$prev_buffer = $bi;
-					continue;
 				}
-				$rounded = round($bi->get_result_value() / $prev_buffer->get_result_value(), 2) . 'x';
-				if($rounded === '1.00x')
-				{
-					continue;
-				}
-				$geo_bits[] = $bi->get_result_identifier() . ' was ' . $rounded . ' the speed of ' . $prev_buffer->get_result_identifier();
-				$prev_buffer = $bi;
 			}
-		}
-		switch(count($geo_bits))
-		{
-			case 0:
-				$geo_bits = null;
-				break;
-			case 1:
-				$geo_bits = array_pop($geo_bits) . '.';
-				break;
-			case 2:
-				$geo_bits = implode(' and ', $geo_bits) . '.';
-				break;
-			default:
-				if(count($geo_bits) > 10)
-				{
+			switch(count($geo_bits))
+			{
+				case 0:
 					$geo_bits = null;
 					break;
-				}
-				$geo_bits = implode(', ', $geo_bits) . '.';
-				break;
+				case 1:
+					$geo_bits = array_pop($geo_bits) . '.';
+					break;
+				case 2:
+					$geo_bits = implode(' and ', $geo_bits) . '.';
+					break;
+				default:
+					if(count($geo_bits) > 10)
+					{
+						$geo_bits = null;
+						break;
+					}
+					$geo_bits = implode(', ', $geo_bits) . '.';
+					break;
+			}
+
+			$summary[] = trim('Based on the geometric mean of all complete results, the fastest (' . $first_place_buffer->get_result_identifier() . ') was ' . round($first_place_buffer->get_result_value() / $last_place_buffer->get_result_value(), 3) . 'x the speed of the slowest (' . $last_place_buffer->get_result_identifier() . '). ' . $geo_bits);
 		}
 
-		$summary[] = trim('Based on the geometric mean of all complete results, the fastest (' . $first_place_buffer->get_result_identifier() . ') was ' . round($first_place_buffer->get_result_value() / $last_place_buffer->get_result_value(), 2) . 'x the speed of the slowest (' . $last_place_buffer->get_result_identifier() . '). ' . $geo_bits);
-
-		if($result_file->get_test_count() > 20)
+		if($result_file->get_test_count() > 16)
 		{
 			$results = $result_file->get_result_objects();
 			$spreads = array();
@@ -384,11 +480,18 @@ class pts_result_file_analyzer
 					{
 						continue;
 					}
-					$spread_text[] = $ro[0]->test_profile->get_title() . ' (' . $ro[0]->get_arguments_description() . ') at ' . round($spread, 2) . 'x';
+					if($do_html)
+					{
+						$spread_text[] = '<strong>' . $ro[0]->test_profile->get_title() . '</strong>' . ($ro[0]->get_arguments_description() != null ? ' (<em>' . $ro[0]->get_arguments_description() . '</em>)' : null) . ' at ' . round($spread, 3) . 'x';
+					}
+					else
+					{
+						$spread_text[] = $ro[0]->test_profile->get_title() . ($ro[0]->get_arguments_description() != null ? ' (' . $ro[0]->get_arguments_description() . ')' : null) . ' at ' . round($spread, 3) . 'x';
+					}
 				}
 				if(!empty($spread_text))
 				{
-					$summary[] = 'The results with the greatest spread from best to worst included: ' . PHP_EOL . PHP_EOL . implode(PHP_EOL . '', $spread_text) . '.';
+					$summary[] = 'The results with the greatest spread from best to worst included: ' . PHP_EOL . PHP_EOL . implode($separator, $spread_text) . '.';
 				}
 			}
 		}
@@ -397,7 +500,7 @@ class pts_result_file_analyzer
 	}
 	public static function generate_wins_losses_results($result_file, $only_wins = false)
 	{
-		$results = null;
+		$results = array();
 		$result_file_identifiers_count = $result_file->get_system_count();
 		$wins = array();
 		$losses = array();
@@ -441,7 +544,7 @@ class pts_result_file_analyzer
 
 		if(empty($wins) || empty($losses))
 		{
-			return;
+			return array();
 		}
 
 		arsort($wins);
@@ -535,7 +638,7 @@ class pts_result_file_analyzer
 	{
 		$results = array();
 		$system_count = $result_file->get_system_count();
-		foreach($result_file->get_result_objects() as $result)
+		foreach($result_file->get_result_objects() as $result_hash => $result)
 		{
 			if($result->test_profile->get_identifier() == null || $result->test_profile->get_display_format() != 'BAR_GRAPH' || $system_count > $result->test_result_buffer->get_count())
 			{
@@ -579,7 +682,7 @@ class pts_result_file_analyzer
 				{
 					$results[$ri] = array();
 				}
-				$results[$ri][] = $r;
+				$results[$ri][$result_hash] = $r;
 			}
 		}
 
@@ -603,7 +706,7 @@ class pts_result_file_analyzer
 			$test_result->test_profile->set_display_format('BAR_GRAPH');
 			$test_result->test_profile->set_result_scale('Geometric Mean');
 			$test_result->test_profile->set_result_proportion('HIB');
-			$test_result->set_used_arguments_description('Result Composite');
+			$test_result->set_used_arguments_description('Result Composite' . ($result_file->get_title() != null ? ' - ' . $result_file->get_title() : null));
 			$test_result->set_used_arguments('Geometric-Mean');
 			$test_result->test_result_buffer = new pts_test_result_buffer();
 			foreach($results as $identifier => $values)
@@ -616,7 +719,7 @@ class pts_result_file_analyzer
 				$test_result->test_result_buffer->add_test_result($identifier, pts_math::set_precision($values, 3));
 			}
 
-			if((!$result_file->is_multi_way_comparison() && !$test_result->test_result_buffer->result_identifier_differences_only_numeric()) || $do_sort)
+			if(!$result_file->is_multi_way_comparison() && $do_sort)
 			{
 				$test_result->sort_results_by_performance();
 				if($best_is_last)
@@ -635,7 +738,7 @@ class pts_result_file_analyzer
 		$geo_results = array();
 		$results = array();
 		$system_count = $result_file->get_system_count();
-		foreach($result_file->get_result_objects() as $result)
+		foreach($result_file->get_result_objects() as $result_hash => $result)
 		{
 			if(($selector == null && $result->test_profile->get_identifier() == null) || $result->test_profile->get_display_format() != 'BAR_GRAPH' || $system_count > $result->test_result_buffer->get_count())
 			{
@@ -670,7 +773,7 @@ class pts_result_file_analyzer
 				{
 					$results[$result->test_profile->get_title()][$ri] = array();
 				}
-				$results[$result->test_profile->get_title()][$ri][] = $r;
+				$results[$result->test_profile->get_title()][$ri][$result_hash] = $r;
 			}
 		}
 
@@ -1003,11 +1106,7 @@ class pts_result_file_analyzer
 		if(count($hw_unique) == 1 && count($sw_unique) == 1)
 		{
 			// The hardware and software is maintained throughout the testing, so if there's a change in results its something we aren't monitoring
-			// TODO XXX: Not sure this below check is needed anymore...
-			if(true || (count($hw) > 2 && $result_file->get_test_count() != count($hw)))
-			{
-				$desc = array('Unknown', implode(', ', $identifiers));
-			}
+			$desc = array('Unknown', implode(', ', $identifiers));
 		}
 		else if(count($sw_unique) == 1)
 		{
@@ -1025,6 +1124,7 @@ class pts_result_file_analyzer
 				array('Motherboard', 'Chipset'), // Motherboard comparison
 				array('Motherboard', 'Chipset', 'Audio', 'Network'), // Also a potential motherboard comparison
 				array('Graphics', 'Audio'), // GPU comparison
+				array('Graphics'),
 				), $return_all_changed_indexes);
 		}
 		else if(count($hw_unique) == 1)
@@ -1266,22 +1366,9 @@ class pts_result_file_analyzer
 	}
 	public static function system_value_to_ir_value($value, $index)
 	{
-		// TODO XXX: Move this logic off to OpenBenchmarking.org script
-		/*
-		!in_array($index, array('Memory', 'System Memory', 'Desktop', 'Screen Resolution', 'System Layer')) &&
-			$search_break_characters = array('@', '(', '/', '+', '[', '<', '*', '"');
-			for($i = 0, $x = strlen($value); $i < $x; $i++)
-			{
-				if(in_array($value[$i], $search_break_characters))
-				{
-					$value = substr($value, 0, $i);
-					break;
-				}
-			}
-		*/
 		$ir = new pts_graph_ir_value($value);
 
-		if($value != 'Unknown' && $value != null)
+		if($value != 'Unknown' && strpos($value, ' ') !== false && $value != null && !in_array($index, array('Screen Resolution', 'File-System', 'Kernel', 'Network', 'Monitor', 'Display Server', 'Chipset')))
 		{
 			$ir->set_attribute('href', 'http://openbenchmarking.org/s/' . $value);
 		}
@@ -1356,6 +1443,11 @@ class pts_result_file_analyzer
 			$system_attributes['Kernel'][$identifier] = $json['kernel-parameters'];
 			unset($json['kernel-parameters']);
 		}
+		if(isset($json['kernel-extra-details']) && $json['kernel-extra-details'] != null)
+		{
+			$system_attributes['Kernel'][$identifier] = (isset($system_attributes['Kernel'][$identifier]) ? $system_attributes['Kernel'][$identifier] . ' - ' : null) . $json['kernel-extra-details'];
+			unset($json['kernel-extra-details']);
+		}
 		if(isset($json['environment-variables']) && $json['environment-variables'] != null)
 		{
 			$system_attributes['Environment'][$identifier] = $json['environment-variables'];
@@ -1377,7 +1469,7 @@ class pts_result_file_analyzer
 			unset($json['disk-scheduler']);
 			unset($json['disk-mount-options']);
 		}
-		if(isset($json['cpu-scaling-governor']) || isset($json['cpu-microcode']))
+		if(isset($json['cpu-scaling-governor']) || isset($json['cpu-microcode']) || isset($json['cpu-thermald']))
 		{
 			$cpu_data = array();
 
@@ -1391,6 +1483,18 @@ class pts_result_file_analyzer
 			{
 				$cpu_data[] = 'CPU Microcode: ' . $json['cpu-microcode'];
 				unset($json['cpu-microcode']);
+			}
+
+			if(isset($json['cpu-thermald']) && !empty($json['cpu-thermald']))
+			{
+				$cpu_data[] = 'Thermald ' . $json['cpu-thermald'];
+				unset($json['cpu-thermald']);
+			}
+
+			if(isset($json['cpu-pm']) && !empty($json['cpu-pm']))
+			{
+				$cpu_data[] = $json['cpu-pm'];
+				unset($json['cpu-pm']);
 			}
 
 			$system_attributes['Processor'][$identifier] = implode(' - ', $cpu_data);

@@ -155,20 +155,32 @@ class pts_test_suite
 						}
 					}
 
-					switch((isset($to_execute->Mode) ? self::clean_input($to_execute->Mode) : null))
+					$mode = isset($to_execute->Mode) ? self::clean_input($to_execute->Mode) : null;
+
+					if($mode == null && $obj->has_test_options() && (!isset($to_execute->Description) || empty($to_execute->Description)))
+					{
+						// Set to BATCH mode if no options passed but expecting themm...
+						$mode = 'BATCH';
+					}
+
+					switch($mode)
 					{
 						case 'BATCH':
-							$mode = 'BATCH';
-							$option_output = pts_test_run_options::batch_user_options($obj);
+							$option_select = isset($to_execute->OptionSelect) ? $to_execute->OptionSelect : false;
+							$option_output = pts_test_run_options::batch_user_options($obj, $option_select, false);
 							break;
 						case 'DEFAULTS':
-							$mode = 'DEFAULTS';
 							$option_output = pts_test_run_options::default_user_options($obj);
 							break;
 						default:
 							$mode = null;
 							$option_output = array(array((isset($to_execute->Arguments) ? self::clean_input($to_execute->Arguments) : null)), array((isset($to_execute->Description) ? self::clean_input($to_execute->Description) : null)));
 							break;
+					}
+
+					if($option_output == false)
+					{
+						continue;
 					}
 
 					foreach(array_keys($option_output[0]) as $x)
@@ -200,7 +212,15 @@ class pts_test_suite
 	{
 		foreach($suite->get_contained_test_result_objects() as $test_result)
 		{
-			$this->test_objects[] = $test_result;
+			$this->add_test_result_object_to_suite($test_result);
+		}
+	}
+	public function add_test_result_object_to_suite(&$test_result)
+	{
+		$this_ch = $test_result->get_comparison_hash(true, false);
+		if(!isset($this->test_objects[$this_ch]))
+		{
+			$this->test_objects[$this_ch] = $test_result;
 		}
 	}
 	public function add_to_suite($test, $arguments = null, $arguments_description = null, $mode = null)
@@ -214,7 +234,7 @@ class pts_test_suite
 		$test_result->set_used_arguments($arguments);
 		$test_result->set_used_arguments_description($arguments_description);
 		$test_result->set_suite_parent($this->get_identifier(false));
-		$this->test_objects[] = $test_result;
+		$this->add_test_result_object_to_suite($test_result);
 
 		if($mode != null)
 		{
@@ -238,11 +258,11 @@ class pts_test_suite
 		}
 		return $dom->schemaValidate(pts_openbenchmarking::openbenchmarking_standards_path() . 'schemas/test-suite.xsd');
 	}
-	protected static function clean_input($value)
+	public static function clean_input($value)
 	{
 		if(is_array($value))
 		{
-			return array_map(array($this, 'clean_input'), $value);
+			return array_map(array('ots_test_suite', 'clean_input'), $value);
 		}
 		else
 		{
@@ -259,13 +279,13 @@ class pts_test_suite
 		{
 			$identifier = pts_openbenchmarking::evaluate_string_to_qualifier($identifier, true, 'suite');
 		}
-		return is_file(PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml');
+		return is_file(PTS_TEST_SUITE_PATH . $identifier . '/suite-definition.xml') ? $identifier : false;
 	}
 	public function needs_updated_install()
 	{
 		foreach(pts_types::identifiers_to_test_profile_objects($this->get_identifier(), false, true) as $test_profile)
 		{
-			if($test_profile->test_installation == false || $test_profile->test_installation->get_installed_system_identifier() != phodevi::system_id_string())
+			if($test_profile->test_installation == false || $test_profile->test_installation->get_system_hash() != phodevi::system_id_string())
 			{
 				return true;
 			}
@@ -481,13 +501,13 @@ class pts_test_suite
 	}
 	public function sort_contained_tests()
 	{
-		usort($this->test_objects, array($this, 'cmp_result_object_sort_title'));
+		uasort($this->test_objects, array($this, 'cmp_result_object_sort_title'));
 	}
 	public function cmp_result_object_sort_title($a, $b)
 	{
 		$a_comp = $a->test_profile->get_title();
 		$b_comp = $b->test_profile->get_title();
-		return strcmp($a_comp, $b_comp);
+		return strcmp(strtolower($a_comp), strtolower($b_comp));
 	}
 	public function get_xml($to = null, $force_nice_formatting = false, $bind_versions = true)
 	{

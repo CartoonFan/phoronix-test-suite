@@ -2,8 +2,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2019 - 2020, Phoronix Media
-	Copyright (C) 2019 - 2020, Michael Larabel
+	Copyright (C) 2019 - 2021, Phoronix Media
+	Copyright (C) 2019 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -45,7 +45,7 @@ if(isset($_REQUEST['checkbox_compare_results']))
 	echo '<script> window.location.href = "http://' . $_SERVER['HTTP_HOST'] . WEB_URL_PATH . 'result/' . implode(',', $_REQUEST['checkbox_compare_results']) . '"; </script>';
 	exit;
 }
-$uri_segments = explode('/', trim((WEB_URL_PATH == '/' ? $uri_stripped : str_replace(WEB_URL_PATH, null, $uri_stripped)), '/'));
+$uri_segments = explode('/', trim((WEB_URL_PATH == '/' ? $uri_stripped : str_replace(WEB_URL_PATH, '', $uri_stripped)), '/'));
 switch((isset($uri_segments[0]) ? $uri_segments[0] : null))
 {
 	case 'result':
@@ -200,6 +200,14 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 			$result_file->save();
 		}
 		exit;
+	case 'rename-result-run':
+		if(VIEWER_CAN_MODIFY_RESULTS && isset($_REQUEST['result_file_id']) && isset($_REQUEST['result_run']) && isset($_REQUEST['new_result_run']))
+		{
+			$result_file = new pts_result_file($_REQUEST['result_file_id']);
+			$result_file->rename_run($_REQUEST['result_run'], $_REQUEST['new_result_run']);
+			$result_file->save();
+		}
+		exit;
 	case 'add-annotation-to-result-object':
 		if(VIEWER_CAN_MODIFY_RESULTS && isset($_REQUEST['result_file_id']) && isset($_REQUEST['result_object']) && isset($_REQUEST['annotation']))
 		{
@@ -295,8 +303,80 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 		}
 		echo '</body></html>';
 		exit;
+	case 'reorder_result_file':
+		if(VIEWER_CAN_MODIFY_RESULTS && isset($_REQUEST['result_file_id']))
+		{
+			$result_file = new pts_result_file($_REQUEST['result_file_id']);
+			if(count($result_file_identifiers = $result_file->get_system_identifiers()) > 1)
+			{
+				if(isset($_POST['reorder_post']))
+				{
+					$sort_array = array();
+
+					foreach($result_file_identifiers as $i => $id)
+					{
+						if(isset($_POST[base64_encode($id)]))
+						{
+							$sort_array[$id] = $_POST[base64_encode($id)];
+						}
+					}
+					asort($sort_array);
+					$sort_array = array_keys($sort_array);
+					$result_file->reorder_runs($sort_array);
+					$result_file->save();
+					echo '<p>Result file is now reordered. <script> window.close(); </script></p>';
+				}
+				else if(isset($_GET['auto_sort']))
+				{
+					sort($result_file_identifiers);
+					$result_file->reorder_runs($result_file_identifiers);
+					$result_file->save();
+					echo '<p>Result file is now auto-sorted. <script> window.close(); </script></p>';
+				}
+				else
+				{
+					echo '<p>Reorder the result file as desired by altering the numbering from lowest to highest or <a href="?page=reorder_result_file&result_file_id=' . $_REQUEST['result_file_id'] . '&auto_sort">auto-sort result file</a>.</p>';
+					echo '<form method="post" action="?page=reorder_result_file&result_file_id=' . $_REQUEST['result_file_id'] . '">';
+					foreach($result_file_identifiers as $i => $id)
+					{
+						echo '<input style="width: 80px;" name="' . base64_encode($id) . '" type="number" min="0" value="' . ($i + 1) . '" />' . $id . '<br />';
+					}
+					
+					echo '<input type="hidden" name="reorder_post" value="1" /><input type="submit" value="Reorder Results" /></form>';
+				}
+			}
+			
+		/*
+		echo PHP_EOL . 'Enter The New Order To Display The New Results, From Left To Right.' . PHP_EOL;
+
+		$sorted_identifiers = array();
+		do
+		{
+			$extract_identifier = pts_user_io::prompt_text_menu('Select the test run to be showed next', $result_file_identifiers);
+			$sorted_identifiers[] = $extract_identifier;
+
+			$old_identifiers = $result_file_identifiers;
+			$result_file_identifiers = array();
+
+			foreach($old_identifiers as $identifier)
+			{
+				if($identifier != $extract_identifier)
+				{
+					$result_file_identifiers[] = $identifier;
+				}
+			}
+		}
+		while(count($result_file_identifiers) > 0);
+
+		$result_file->reorder_runs($sorted_identifiers);
+		pts_client::save_test_result($result_file->get_file_location(), $result_file->get_xml());
+		pts_client::display_result_view($result_file, false);
+		*/
+		
+		}
+		exit;
 	case 'view_system_logs':
-		echo '<!doctype html>
+		$system_log_html = '<!doctype html>
 		<html lang="en">
 		<head>
 		  <title>Log Viewer</title>
@@ -309,34 +389,47 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 		{
 			$result_file = new pts_result_file($_REQUEST['result_file_id']);
 
-			if(($system_log_dir = $result_file->get_system_log_dir($_REQUEST['system_id'])))
+			foreach($result_file->get_systems() as $system)
 			{
-				$system_logs = pts_file_io::glob($system_log_dir . '*');
-				if(count($system_logs) > 0)
+				if($system->get_identifier() == $_REQUEST['system_id'])
 				{
-					echo '<div style="text-align: center;"><form action="' . CURRENT_URI . '" method="post"><select name="log_select" id="log_select">';
-					foreach($system_logs as $log_file)
+					$system_logs = $system->log_files();
+					$system_log_html .= '<h2 align="center">' . $_REQUEST['system_id'] . ' Logs</h2>';
+					$system_log_html .= '<div style="text-align: center;"><form action="' . str_replace('&download', '', CURRENT_URI) . '" method="post"><select name="log_select" id="log_select">';
+					foreach($system_logs as $b)
 					{
-						$b = basename($log_file);
-						echo '<option value="' . $b . '"' . ($b == $_REQUEST['log_select'] ? 'selected="selected"' : null) . '>' . $b . '</option>';
+						$system_log_html .= '<option value="' . $b . '"' . (isset($_REQUEST['log_select']) && $b == $_REQUEST['log_select'] ? 'selected="selected"' : null) . '>' . $b . '</option>';
 					}
-					echo '</select> &nbsp; <input type="submit" value="Show Log"></form></div><br /><hr />';
-					if(isset($_REQUEST['log_select']) && is_file($system_log_dir . pts_strings::simplify_string_for_file_handling($_REQUEST['log_select'])))
+					$system_log_html .= '</select> &nbsp; <input type="submit" value="Show Log"></form></div><br /><hr />';
+					$show_log = isset($_REQUEST['log_select']) ? $_REQUEST['log_select'] : array_shift($system_logs);
+					$log_contents = $system->log_files($show_log, false);
+					if(pts_strings::is_text_string($log_contents) && !isset($_GET['download']))
 					{
-						$show_log = $system_log_dir . pts_strings::simplify_string_for_file_handling($_REQUEST['log_select']);
+						$log_contents = phodevi_vfs::cleanse_file($log_contents);
+						$log_file = htmlentities($log_contents);
+						$log_file = str_replace(PHP_EOL, '<br />', $log_file);
+						$system_log_html .= '<br /><div style="font-family: monospace;">' . $log_file . '</div>';
+						$system_log_html .= '<br /><p><a href="' . CURRENT_URI . '&download&log_select=' . $show_log . '">Download Log File</a></p>';
 					}
-					else
+					else if(isset($_REQUEST['log_select'])) // to avoid blocking the popup window in first place
 					{
-						$show_log = array_shift($system_logs);
+						if(class_exists('finfo'))
+						{
+							$finfo = new finfo(FILEINFO_MIME);
+							header('Content-type: '. $finfo->buffer($log_contents));
+						}
+						//header('Content-Type: application/octet-stream');
+						header('Content-Length: ' . strlen($log_contents));
+						header('Content-Disposition: attachment; filename="' . str_ireplace(array('/', '\\', '.'), '', $_REQUEST['system_id']) . ' - ' . $show_log . '"');
+						echo $log_contents;
+						exit;
 					}
-					$log_file = htmlentities(file_get_contents($show_log));
-					$log_file = str_replace(PHP_EOL, '<br />', $log_file);
-					echo '<br /><div style="font-family: monospace;">' . $log_file . '</div>';
+					break;
 				}
 			}
 
 		}
-		echo '</body></html>';
+		echo $system_log_html . '</body></html>';
 		exit;
 	case 'test':
 		$o = new pts_test_profile($_GET['test']);
@@ -613,7 +706,7 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 					{
 						$_REQUEST[$key] = implode(',', $_REQUEST[$key]);
 					}
-					$result_link .= '&' . $key . '=' . urlencode($_REQUEST[$key]);
+					$result_link .= '&' . $key . '=' . urlencode(str_replace('.', '_DD_', $_REQUEST[$key]));
 				}
 			}
 			$server_uri = $_SERVER['REQUEST_URI'];
@@ -625,7 +718,6 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 			header('Location: ' . $server_uri . $result_link);
 		}
 		$result_file = null;
-		$result_merges = 0;
 		$possible_results = explode(',', $_GET['result']);
 		$results_viewing = array();
 		foreach($possible_results as $rid)
@@ -645,7 +737,6 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 				{
 					$rf = new pts_result_file($rid);
 					$result_file->merge(array(new pts_result_merge_select($rf)), 0, $rf->get_title(), true, true);
-					$result_merges++;
 				}
 			}
 		}
@@ -653,405 +744,87 @@ switch(isset($_GET['page']) ? $_GET['page'] : null)
 		{
 			break;
 		}
-		define('RESULTS_VIEWING_COUNT', count($results_viewing));
-		define('RESULTS_VIEWING_ID', $results_viewing[0]);
-		if($result_merges > 0)
-		{
-			$result_file->avoid_duplicate_identifiers();
-		}
-
-		$extra_attributes = null;
-		$html_options = pts_result_viewer_settings::get_html_options_markup($result_file, $_REQUEST);
-		pts_result_viewer_settings::process_request_to_attributes($_REQUEST, $result_file, $extra_attributes);
 		define('TITLE', $result_file->get_title() . ' - Phoronix Test Suite');
-		$PAGE .= pts_result_viewer_settings::get_html_sort_bar($result_file, $_REQUEST);
-		$PAGE .= '<h1 id="result_file_title" placeholder="Title">' . $result_file->get_title() . '</h1>';
-		$PAGE .= '<p id="result_file_desc" placeholder="Description">' . str_replace(PHP_EOL, '<br />', $result_file->get_description()) . '</p>';
-		$PAGE .= '<div id="result-settings">';
-		if(VIEWER_CAN_MODIFY_RESULTS && RESULTS_VIEWING_COUNT == 1)
-		{
-			$PAGE .= ' <input type="submit" id="save_result_file_meta_button" value="Save" onclick="javascript:save_result_file_meta(\'' . RESULTS_VIEWING_ID . '\'); return false;" style="display: none;">';
-			$PAGE .= ' <input type="submit" id="edit_result_file_meta_button" value="Edit" onclick="javascript:edit_result_file_meta(); return false;">';
-		}
-		if(VIEWER_CAN_DELETE_RESULTS && RESULTS_VIEWING_COUNT == 1)
-		{
-			$PAGE .= ' <input type="submit" value="Delete Result File" onclick="javascript:delete_result_file(\'' . RESULTS_VIEWING_ID . '\'); return false;">';
-		}
-		//$PAGE .= '<p align="center"><strong>Export As: </strong> <a href="' . CURRENT_URI . '&export=pdf">PDF</a>, <a href="' . CURRENT_URI . '&export=csv">CSV</a>, <a href="' . CURRENT_URI . '&export=csv-all">CSV Individual Data</a> </p>';
-		$PAGE .= '<p align="center">Jump To <a href="#table">Table</a> - <a href="#results">Results</a></p>';
-		$PAGE .= '<hr /><div style="font-size: 12pt;">' . $html_options . '</div><hr style="clear: both;" />';
-		$PAGE .= pts_result_viewer_settings::process_helper_html($_REQUEST, $result_file, $extra_attributes);
-		$PAGE .= '</div>';
-		$PAGE .= '<div class="print_notes">' . pts_result_file_output::result_file_to_system_html($result_file) . '</div>';
-		$PAGE .= '<div id="result_overview_area">';
-		$intent = -1;
-		if($result_file->get_system_count() == 1 || ($intent = pts_result_file_analyzer::analyze_result_file_intent($result_file, $intent, true)))
-		{
-			$table = new pts_ResultFileCompactSystemsTable($result_file, $intent);
-		}
-		else
-		{
-			$table = new pts_ResultFileSystemsTable($result_file);
-		}
-		$PAGE .= '<p style="text-align: center; overflow: auto;" class="result_object" id="result_file_system_table">' . pts_render::render_graph_inline_embed($table, $result_file, $extra_attributes) . '</p>';
-
-		if($result_file->get_system_count() == 2)
-		{
-			$graph = new pts_graph_run_vs_run($result_file);
-
-			if($graph->renderGraph())
-			{
-				$PAGE .= '<p style="text-align: center; overflow: auto;" class="result_object">' . pts_render::render_graph_inline_embed($graph, $result_file, $extra_attributes) . '</p>';
-			}
-		}
-		else if($result_file->get_system_count() > 12 && false) // TODO determine when this is sane enough to enable
-		{
-			$graph = new pts_graph_mini_overview($result_file, '');
-
-			if($graph->renderGraph())
-			{
-				$PAGE .= '<p style="text-align: center; overflow: auto;" class="result_object">' . pts_render::render_graph_inline_embed($graph, $result_file, $extra_attributes) . '</p>';
-			}
-		}
-		else if(!$result_file->is_multi_way_comparison())
-		{
-			foreach(array('', 'Per Watt', 'Per Dollar') as $selector)
-			{
-				$graph = new pts_graph_radar_chart($result_file, $selector);
-
-				if($graph->renderGraph())
-				{
-					$PAGE .= '<p style="text-align: center; overflow: auto;" class="result_object">' . pts_render::render_graph_inline_embed($graph, $result_file, $extra_attributes) . '</p>';
-				}
-			}
-		}
-		$PAGE .= '<a name="table"></a>';
-		if(!$result_file->is_multi_way_comparison())
-		{
-			$PAGE .= '<div class="pts_result_table">' . pts_result_file_output::result_file_to_detailed_html_table($result_file, 'grid', $extra_attributes, pts_result_viewer_settings::check_request_for_var($_REQUEST, 'sdt')) . '</div>';
-		}
-		else
-		{
-			$intent = null;
-			$table = new pts_ResultFileTable($result_file, $intent);
-			$PAGE .= '<p style="text-align: center; overflow: auto;" class="result_object">' . pts_render::render_graph_inline_embed($table, $result_file, $extra_attributes) . '</p>';
-		}
-		$PAGE .= '</div>';
-
-		$PAGE .= '<a name="table"></a><div id="results">';
-		$prev_title = null;
-
-		$identifier_mapping_to_cores = array();
-		$identifier_mapping_to_threads = array();
-		$identifier_mapping_to_cpu_clock = array();
-		$identifier_mapping_to_ram_channels = array();
-
-		if($result_file->get_system_count() > 1 && !$result_file->is_multi_way_comparison())
-		{
-			foreach($result_file->get_systems() as $system)
-			{
-				$t = $system->get_cpu_core_count();
-				if($t > 0)
-				{
-					$identifier_mapping_to_cores[$system->get_identifier()] = $t;
-				}
-				$t = $system->get_cpu_thread_count();
-				if($t > 0)
-				{
-					$identifier_mapping_to_threads[$system->get_identifier()] = $t;
-				}
-				$t = $system->get_cpu_clock();
-				if($t > 0)
-				{
-					$identifier_mapping_to_cpu_clock[$system->get_identifier()] = $t;
-				}
-				$t = $system->get_memory_channels();
-				if($t > 0)
-				{
-					$identifier_mapping_to_ram_channels[$system->get_identifier()] = $t;
-				}
-			}
-
-			if(count(array_unique($identifier_mapping_to_cores)) < 2)
-			{
-				$identifier_mapping_to_cores = array();
-			}
-			if(count(array_unique($identifier_mapping_to_threads)) < 2)
-			{
-				$identifier_mapping_to_threads = array();
-			}
-			if(count(array_unique($identifier_mapping_to_cpu_clock)) < 2)
-			{
-				$identifier_mapping_to_cpu_clock = array();
-			}
-			if(count(array_unique($identifier_mapping_to_ram_channels)) < 2)
-			{
-				$identifier_mapping_to_ram_channels = array();
-			}
-		}
-
-		//
-		// SHOW THE RESULTS
-		//
-		$skip_ros = array();
-		foreach($result_file->get_result_objects() as $i => $result_object)
-		{
-			//
-			// RENDER TEST AND ANCHOR
-			//
-			$ro = clone $result_object;
-			$res_desc_shortened = $result_object->get_arguments_description_shortened(false);
-			$res = pts_render::render_graph_inline_embed($ro, $result_file, $extra_attributes);
-			if($res == false || in_array($i, $skip_ros))
-			{
-				continue;
-			}
-			$PAGE .= '<a name="r-' . $i . '"></a><div style="text-align: center;" id="result-' . $i . '">';
-
-			//
-			// DISPLAY TEST PORIFLE METADATA HELPER
-			//
-			if($result_object->test_profile->get_title() != $prev_title)
-			{
-				$PAGE .= '<h2>' . $result_object->test_profile->get_title() . '</h2>';
-				if(is_file(PTS_INTERNAL_OB_CACHE . 'test-profiles/' . $result_object->test_profile->get_identifier() . '/test-definition.xml'))
-				{
-					$tp = new pts_test_profile(PTS_INTERNAL_OB_CACHE . 'test-profiles/' . $result_object->test_profile->get_identifier() . '/test-definition.xml');
-					$PAGE .= '<p class="mini">' . $tp->get_description() . ' <a href="https://openbenchmarking.org/test/' . $result_object->test_profile->get_identifier() . '"><em class="hide_on_print">Learn more at OpenBenchmarking.org</em></a>.</p>';
-
-				/*	$suites_containing_test = pts_test_suites::suites_containing_test_profile($result_object->test_profile);
-					if(!empty($suites_containing_test))
-					{
-						foreach($suites_containing_test as $suite)
-						{
-							$PAGE .= $suite->get_title() . ' ' . $suite->get_identifier();
-						}
-					}  */
-				}
-				$prev_title = $result_object->test_profile->get_title();
-			}
-
-			//
-			// DISPLAY GRAPH
-			//
-
-			// Run variability
-			$res_per_core = false;
-			$res_per_thread = false;
-			$res_per_clock = false;
-			$res_per_ram = false;
-			$res_variability = false;
-
-			if(!in_array($result_object->test_profile->get_display_format(), array('LINE_GRAPH', 'BOX_PLOT')) && $result_object->test_result_buffer->detected_multi_sample_result() && $result_object->test_result_buffer->get_count() > 1)
-			{
-				$extra_attributes['graph_render_type'] = 'HORIZONTAL_BOX_PLOT';
-				$ro = clone $result_object;
-				$res_variability = pts_render::render_graph_inline_embed($ro, $result_file, $extra_attributes);
-				unset($extra_attributes['graph_render_type']);
-			}
-
-			if(!empty($identifier_mapping_to_cores))
-			{
-				$ro = pts_result_file_analyzer::get_result_object_custom($result_file, $result_object, $identifier_mapping_to_cores, 'Performance Per Core', 'Core');
-				if($ro)
-				{
-					$res_per_core = pts_render::render_graph_inline_embed($ro, $result_file, $extra_attributes);
-				}
-			}
-			if(!empty($identifier_mapping_to_threads))
-			{
-				$ro = pts_result_file_analyzer::get_result_object_custom($result_file, $result_object, $identifier_mapping_to_threads, 'Performance Per Thread', 'Thread');
-				if($ro)
-				{
-					$res_per_thread = pts_render::render_graph_inline_embed($ro, $result_file, $extra_attributes);
-				}
-			}
-			if(!empty($identifier_mapping_to_cpu_clock))
-			{
-				$ro = pts_result_file_analyzer::get_result_object_custom($result_file, $result_object, $identifier_mapping_to_cpu_clock, 'Performance Per Clock', 'GHz');
-				if($ro)
-				{
-					$res_per_clock = pts_render::render_graph_inline_embed($ro, $result_file, $extra_attributes);
-				}
-			}
-			if(!empty($identifier_mapping_to_ram_channels))
-			{
-				$ro = pts_result_file_analyzer::get_result_object_custom($result_file, $result_object, $identifier_mapping_to_ram_channels, 'Performance Per Memory Channel', 'Channel');
-				if($ro)
-				{
-					$res_per_ram = pts_render::render_graph_inline_embed($ro, $result_file, $extra_attributes);
-				}
-			}
-
-			$tabs = array(
-				'Result' => $res
-				);
-
-			foreach($result_file->get_relation_map($i) as $child_ro)
-			{
-				$c_ro = $result_file->get_result($child_ro);
-				if($c_ro)
-				{
-					$desc = str_replace(array(' Monitor', $res_desc_shortened ,'()' ,')'), '', $c_ro->get_arguments_description_shortened(false));
-					$tabs[($desc == $res_desc_shortened || empty($desc) ? $c_ro->test_profile->get_result_scale() : $desc)] = pts_render::render_graph_inline_embed($c_ro, $result_file, null);
-					$result_file->remove_result_object_by_id($child_ro);
-					$skip_ros[] = $child_ro;
-				}
-			}
-
-			$tabs['Perf Per Core'] = $res_per_core;
-			$tabs['Perf Per Thread'] = $res_per_thread;
-			$tabs['Perf Per Clock'] = $res_per_clock;
-			$tabs['Perf Per RAM Channel'] = $res_per_ram;
-			$tabs['Result Confidence'] = $res_variability;
-
-			foreach($tabs as $title => &$graph)
-			{
-				if(empty($graph))
-				{
-					unset($tabs[$title]);
-				}
-			}
-			switch(count($tabs))
-			{
-				case 0:
-					continue 2;
-				case 1:
-					$PAGE .= $res . '<br />';
-					break;
-				default:
-					$PAGE .= '<div class="tabs">';
-					foreach($tabs as $title => &$graph)
-					{
-						$tab_id = strtolower(str_replace(' ', '_', $title)) . '_' . $i;
-						$PAGE .= '<input type="radio" name="tabs_' . $i . '" id="' . $tab_id . '"' . ($title == 'Result' ? ' checked="checked"' : '') . '>
-						  <label for="' . $tab_id . '">' . $title . '</label>
-						  <div class="tab">
-						    ' . $graph . '
-						  </div>';
-					}
-					$PAGE .= '</div>';
-			}
-
-			// $PAGE .= $res . '<br />';
-
-			//
-			// DISPLAY LOGS
-			//
-			$button_area = null;
-			$test_log_dir = $result_file->get_test_log_dir($result_object);
-			if($test_log_dir && count(pts_file_io::glob($test_log_dir . '*.log')) > 0)
-			{
-				$button_area .= ' <button onclick="javascript:display_test_logs_for_result_object(\'' . RESULTS_VIEWING_ID . '\', \'' . $i . '\'); return false;">View Test Run Logs</button> ';
-			}
-			$install_logs = pts_file_io::glob($result_file->get_test_installation_log_dir() . '*/' . $result_object->test_profile->get_identifier_simplified() . '.log');
-			if(count($install_logs) > 0)
-			{
-				$button_area .= ' <button onclick="javascript:display_install_logs_for_result_object(\'' . RESULTS_VIEWING_ID . '\', \'' . $i . '\'); return false;">View Test Installation Logs</button> ';
-			}
-
-
-			//
-			// EDITING / DELETE OPTIONS
-			//
-
-			if(VIEWER_CAN_DELETE_RESULTS && RESULTS_VIEWING_COUNT == 1 && !$result_object->dynamically_generated)
-			{
-				$button_area .= ' <button onclick="javascript:delete_result_from_result_file(\'' . RESULTS_VIEWING_ID . '\', \'' . $i . '\'); return false;">Delete Result</button> ';
-			}
-			if(VIEWER_CAN_MODIFY_RESULTS && RESULTS_VIEWING_COUNT == 1 && !$result_object->dynamically_generated)
-			{
-				if($result_object->get_annotation() == null)
-				{
-					$button_area .= ' <button onclick="javascript:display_add_annotation_for_result_object(\'' . RESULTS_VIEWING_ID . '\', \'' . $i . '\', this); return false;">Add Annotation</button> ';
-					$PAGE .= ' <div id="annotation_area_' . $i . '" style="display: none;"> <form action="#" onsubmit="javascript:add_annotation_for_result_object(\'' . RESULTS_VIEWING_ID . '\', \'' . $i . '\', this); return false;"><textarea rows="4" cols="50" placeholder="Add Annotation..." name="annotation"></textarea><br /><input type="submit" value="Add Annotation"></form></div>';
-				}
-				else
-				{
-					$PAGE .= '<div id="update_annotation_' . $i . '" contentEditable="true">' . $result_object->get_annotation() . '</div> <input type="submit" value="Update Annotation" onclick="javascript:update_annotation_for_result_object(\'' . RESULTS_VIEWING_ID . '\', \'' . $i . '\'); return false;">';
-				}
-			}
-			else
-			{
-				$PAGE .= '<p class="mini">' . $result_object->get_annotation() . '</p>';
-			}
-			if($button_area != null)
-			{
-				$PAGE .= '<p>' . $button_area . '</p>';
-			}
-
-			$PAGE .= '</div>';
-			unset($result_object);
-		}
-		$PAGE .= '</div>';
+		$embed = new pts_result_viewer_embed($result_file, $results_viewing[0]);
+		$embed->allow_modifying_results(VIEWER_CAN_MODIFY_RESULTS && count($results_viewing) == 1);
+		$embed->allow_deleting_results(VIEWER_CAN_DELETE_RESULTS && count($results_viewing) == 1);
+		$PAGE = $embed->get_html();
 		break;
 	case 'index':
 	default:
-		define('TITLE', 'Phoronix Test Suite ' . PTS_VERSION . ' Result Portal');
-		$PAGE .= '<form name="search_results" id="search_results" action="' . CURRENT_URI . '" method="post"><input type="text" name="search" id="u_search" placeholder="Search Test Results" value="' . (isset($_POST['search']) ? $_POST['search'] : null) . '" /> <select name="sort_results_by"><option value="date">Sort By Date</option><option value="title">Sort By Title</option><option value="test_count">Sort By Test Count</option><option value="system_count">Sort By System Count</option></select> <input class="primary-button" type="submit" value="Update" />
-</form>';
-		$leading_msg = null;
-		if(VIEWER_CAN_DELETE_RESULTS && isset($_GET['remove_result']) && $_GET['remove_result'] && pts_results::is_saved_result_file($_GET['remove_result']))
+		if(isset($uri_segments[0]) && is_file($uri_segments[0] . '.html'))
 		{
-			$deleted = pts_results::remove_saved_result_file($_GET['remove_result']);
-			if($deleted)
-			{
-				$leading_msg = 'Deleted the <em>' . $_GET['remove_result'] . '</em> result file.';
-			}
+			define('TITLE', 'Phoronix Test Suite ' . PTS_VERSION);
+			$PAGE = file_get_contents($uri_segments[0] . '.html');
 		}
-
-		$results = pts_results::query_saved_result_files((isset($_POST['search']) ? $_POST['search'] : null), (isset($_REQUEST['sort_results_by']) ? $_REQUEST['sort_results_by'] : null));
-
-		$total_result_points = 0;
-		foreach($results as $id => $result_file)
+		else
 		{
-			$total_result_points += $result_file->get_test_count();
-		}
-
-		$PAGE .= '<div class="sub" style="margin: 6px 0 30px">' . count($results) . ' Result Files Containing A Combined ' . $total_result_points . ' Test Results</div>';
-		$PAGE .= '<form name="compare_results" id="compare_results_id" action="' . CURRENT_URI . '" method="post"><input type="submit" value="Compare Results" id="compare_results_submit" />';
-		$i = 0;
-		foreach($results as $id => $result_file)
-		{
-			$i++;
-			$PAGE .= '<h2><a href="' . WEB_URL_PATH . 'result/' . $id . '">' . $result_file->get_title() . '</a></h2>';
-			$PAGE .= '<div class="sub"><input type="checkbox" name="checkbox_compare_results[]" value="' . $id . '" id="cr_checkbox_' . $i . '" /> <label for="cr_checkbox_' . $i . '"><span onclick="javascript:document.getElementById(\'compare_results_id\').submit(); return false;">Compare Results</span></label> ' . $result_file->get_test_count() . ' Tests &nbsp; &nbsp; ' . $result_file->get_system_count() . ' Systems &nbsp; &nbsp; ' . date('l j F H:i', strtotime($result_file->get_last_modified())) . ' ' . (VIEWER_CAN_DELETE_RESULTS ? ' &nbsp; &nbsp; <span onclick="javascript:delete_result_file(\'' . $id . '\'); return false;">DELETE RESULT FILE</span>' : null) . '</div>';
-			$PAGE .= '<div class="desc">' . $result_file->get_description() . '</div>';
-
-			$geometric_mean = pts_result_file_analyzer::generate_geometric_mean_result($result_file);
-			if($geometric_mean)
+			define('TITLE', 'Phoronix Test Suite ' . PTS_VERSION . ' Result Portal');
+			$PAGE .= '<form name="search_results" id="search_results" action="' . CURRENT_URI . '" method="post"><input type="text" name="search" id="u_search" placeholder="Search Test Results" value="' . (isset($_POST['search']) ? $_POST['search'] : null) . '" /> <select name="sort_results_by"><option value="date">Sort By Date</option><option value="title">Sort By Title</option><option value="test_count">Sort By Test Count</option><option value="system_count">Sort By System Count</option></select> <input class="primary-button" type="submit" value="Update" />
+	</form>';
+			$leading_msg = null;
+			if(VIEWER_CAN_DELETE_RESULTS && isset($_GET['remove_result']) && $_GET['remove_result'] && pts_results::is_saved_result_file($_GET['remove_result']))
 			{
-				$geo_display = null;
-				$geo_display_count = 0;
-				$best_result = $geometric_mean->test_result_buffer->get_max_value(false);
-				foreach($geometric_mean->test_result_buffer as &$buffers)
+				$deleted = pts_results::remove_saved_result_file($_GET['remove_result']);
+				if($deleted)
 				{
-					if(empty($buffers))
-						continue;
+					$leading_msg = 'Deleted the <em>' . $_GET['remove_result'] . '</em> result file.';
+				}
+			}
 
-					$max_value = 0;
-					foreach($buffers as &$buffer_item)
+			$results = pts_results::query_saved_result_files((isset($_POST['search']) ? $_POST['search'] : null), (isset($_REQUEST['sort_results_by']) ? $_REQUEST['sort_results_by'] : null));
+
+			$total_result_points = 0;
+			foreach($results as $id => $result_file)
+			{
+				$total_result_points += $result_file->get_test_count();
+			}
+
+			$PAGE .= '<div class="sub" style="margin: 6px 0 30px">' . count($results) . ' Result Files Containing A Combined ' . $total_result_points . ' Test Results</div>';
+			$PAGE .= '<form name="compare_results" id="compare_results_id" action="' . CURRENT_URI . '" method="post"><input type="submit" value="Compare Results" id="compare_results_submit" />';
+			$i = 0;
+			foreach($results as $id => $result_file)
+			{
+				$i++;
+				$PAGE .= '<h2><a href="' . WEB_URL_PATH . 'result/' . $id . '">' . $result_file->get_title() . '</a></h2>';
+				$PAGE .= '<div class="sub"><input type="checkbox" name="checkbox_compare_results[]" value="' . $id . '" id="cr_checkbox_' . $i . '" /> <label for="cr_checkbox_' . $i . '"><span onclick="javascript:document.getElementById(\'compare_results_id\').submit(); return false;">Compare Results</span></label> ' . $result_file->get_test_count() . ' Tests &nbsp; &nbsp; ' . $result_file->get_system_count() . ' Systems &nbsp; &nbsp; ' . date('l j F H:i', strtotime($result_file->get_last_modified())) . ' ' . (VIEWER_CAN_DELETE_RESULTS ? ' &nbsp; &nbsp; <span onclick="javascript:delete_result_file(\'' . $id . '\'); return false;">DELETE RESULT FILE</span>' : null) . '</div>';
+				$PAGE .= '<div class="desc">' . $result_file->get_description() . '</div>';
+
+				$geometric_mean = pts_result_file_analyzer::generate_geometric_mean_result($result_file);
+				if($geometric_mean)
+				{
+					$geo_display = null;
+					$geo_display_count = 0;
+					$best_result = $geometric_mean->test_result_buffer->get_max_value(false);
+					foreach($geometric_mean->test_result_buffer as &$buffers)
 					{
-						$v = $buffer_item->get_result_value();
-						if(!is_numeric($v)) continue;
-						$percentage = ($v / $best_result) * 100;
-						$bg = pts_render::identifier_to_brand_color($buffer_item->get_result_identifier(), '');
-						if($bg)
+						if(empty($buffers))
+							continue;
+
+						$max_value = 0;
+						foreach($buffers as &$buffer_item)
 						{
-							$bg = 'background: ' . $bg . '; color: #FFF';
+							$v = $buffer_item->get_result_value();
+							if(!is_numeric($v)) continue;
+							$percentage = ($v / $best_result) * 100;
+							$bg = pts_render::identifier_to_brand_color($buffer_item->get_result_identifier(), '');
+							if($bg)
+							{
+								$bg = 'background: ' . $bg . '; color: #FFF';
+							}
+							$geo_display .=  '<div class="geo_bg_graph" style="margin-right: ' . round(100 - $percentage, 1) . '%; ' . $bg . '"><strong>' . $buffer_item->get_result_identifier() . ':</strong> ' . $v . ' (' . round($percentage, 2) . '%)</div>';
+							$geo_display_count++;
 						}
-						$geo_display .=  '<div class="geo_bg_graph" style="margin-right: ' . round(100 - $percentage, 1) . '%; ' . $bg . '"><strong>' . $buffer_item->get_result_identifier() . ':</strong> ' . $v . ' (' . round($percentage, 2) . '%)</div>';
-						$geo_display_count++;
+					}
+					if($geo_display_count > 1)
+					{
+						$PAGE .= '<span class="sub_header">Geometric Mean</span>' . $geo_display;
 					}
 				}
-				if($geo_display_count > 1)
-				{
-					$PAGE .= '<span class="sub_header">Geometric Mean</span>' . $geo_display;
-				}
+				$PAGE .= '<br />';
 			}
-			$PAGE .= '<br />';
+			$PAGE .= '</form>';
 		}
-		$PAGE .= '</form>';
 		break;
 
 }
@@ -1075,8 +848,8 @@ var WEB_URL_PATH = "<?php echo WEB_URL_PATH; ?>";
 <div id="header">
 <div style="float: left; margin-top: 2px;">
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewbox="0 0 76 41" width="76" height="41" preserveAspectRatio="xMinYMin meet">
-  <path d="m74 22v9m-5-16v16m-5-28v28m-23-2h12.5c2.485281 0 4.5-2.014719 4.5-4.5s-2.014719-4.5-4.5-4.5h-8c-2.485281 0-4.5-2.014719-4.5-4.5s2.014719-4.5 4.5-4.5h12.5m-21 5h-11m11 13h-2c-4.970563 0-9-4.029437-9-9v-20m-24 40v-20c0-4.970563 4.0294373-9 9-9 4.970563 0 9 4.029437 9 9s-4.029437 9-9 9h-9" stroke="#fff" stroke-width="4" fill="none" />
-</svg></div> <div style="float: left; margin-left: 10px;"> <a href="<?php echo WEB_URL_PATH; ?>">Result Viewer</a></div>
+  <path d="m74 22v9m-5-16v16m-5-28v28m-23-2h12.5c2.485281 0 4.5-2.014719 4.5-4.5s-2.014719-4.5-4.5-4.5h-8c-2.485281 0-4.5-2.014719-4.5-4.5s2.014719-4.5 4.5-4.5h12.5m-21 5h-11m11 13h-2c-4.970563 0-9-4.029437-9-9v-20m-24 40v-20c0-4.970563 4.0294373-9 9-9 4.970563 0 9 4.029437 9 9s-4.029437 9-9 9h-9" stroke="#696969" stroke-width="4" fill="none" />
+</svg></div> <div style="float: left; margin: 5px 0 0 10px;"> <a href="<?php echo WEB_URL_PATH; ?>">Result Viewer</a></div>
 <ul>
 <?php if(PTS_OPENBENCHMARKING_SCRATCH_PATH != null) { ?>
 <li><a href="<?php echo WEB_URL_PATH; ?>tests/">Test Profiles</a></li>

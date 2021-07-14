@@ -24,11 +24,19 @@
 		</Package>
 		<Package>
 			<GenericName>vulkan-development</GenericName>
-			<PackageName>media-libs/vulkan-loder</PackageName>
+			<PackageName>media-libs/vulkan-loader</PackageName>
 		</Package>
 		<Package>
 			<GenericName>openssl-development</GenericName>
 			<PackageName>dev-libs/openssl</PackageName>
+		</Package>
+		<Package>
+			<GenericName>protobuf</GenericName>
+			<PackageName>dev-libs/protobuf</PackageName>
+		</Package>
+		<Package>
+			<GenericName>eigen</GenericName>
+			<PackageName>dev-cpp/eigen</PackageName>
 		</Package>
 		<Package>
 			<GenericName>expat</GenericName>
@@ -363,6 +371,14 @@
 		<Package>
 			<GenericName>glfw</GenericName>
 			<PackageName>media-libs/glfw</PackageName>
+		</Package>
+		<Package>
+			<GenericName>erlang</GenericName>
+			<PackageName>dev-lang/erlang</PackageName>
+		</Package>
+		<Package>
+			<GenericName>libconfigpp</GenericName>
+			<PackageName>dev-libs/libconfig</PackageName>
 		</Package>
 	</ExternalDependencies>
 </PhoronixTestSuite>

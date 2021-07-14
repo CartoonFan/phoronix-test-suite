@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2018, Phoronix Media
-	Copyright (C) 2008 - 2018, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	phodevi_gpu.php: The PTS Device Interface object for the graphics processor
 
 	This program is free software; you can redistribute it and/or modify
@@ -38,8 +38,34 @@ class phodevi_gpu extends phodevi_device_interface
 			'available-modes' => new phodevi_device_property('gpu_available_modes', phodevi::std_caching),
 			'screen-resolution' => new phodevi_device_property('gpu_screen_resolution', phodevi::std_caching),
 			'screen-resolution-string' => new phodevi_device_property('gpu_screen_resolution_string', phodevi::std_caching),
-			'2d-acceleration' => new phodevi_device_property('gpu_2d_acceleration', phodevi::std_caching)
+			'2d-acceleration' => new phodevi_device_property('gpu_2d_acceleration', phodevi::std_caching),
+			'device-id' => new phodevi_device_property('gpu_pci_device_id', phodevi::smart_caching),
 			);
+	}
+	public static function gpu_pci_device_id()
+	{
+		$device_id = null;
+		if(phodevi::is_nvidia_graphics())
+		{
+			$nvidia_id = explode(',', phodevi_parser::read_nvidia_extension('PCIID'));
+			if(!empty($nvidia_id))
+			{
+				$device_id = array_pop($nvidia_id);
+			}
+		}
+		else if(phodevi::is_linux())
+		{
+			foreach(pts_file_io::glob('/sys/class/drm/card*/device/device') as $device)
+			{
+				$device_id = str_replace('0x', '', pts_file_io::file_get_contents($device));
+				if(!empty($device_id))
+				{
+					break;
+				}
+			}
+		}
+
+		return $device_id;
 	}
 	public static function gpu_2d_acceleration()
 	{
@@ -89,7 +115,7 @@ class phodevi_gpu extends phodevi_device_interface
 	}
 	public static function gpu_set_resolution($args)
 	{
-		if(count($args) != 2 || phodevi::is_windows() || phodevi::is_macosx() || !pts_client::executable_in_path('xrandr'))
+		if(count($args) != 2 || phodevi::is_windows() || phodevi::is_macos() || !pts_client::executable_in_path('xrandr'))
 		{
 			return false;
 		}
@@ -162,7 +188,7 @@ class phodevi_gpu extends phodevi_device_interface
 			$gl_msaa = getenv('__GL_FSAA_MODE');
 			if(is_numeric($gl_msaa) && $gl_msaa > 0)
 			{
-				$aa_level = '__GL_FSAA_MODE=' . $gallium_msaa;
+				$aa_level = '__GL_FSAA_MODE=' . $gl_msaa;
 			}
 		}
 
@@ -289,7 +315,7 @@ class phodevi_gpu extends phodevi_device_interface
 			}
 		}
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$info = pts_strings::trim_explode(' ', phodevi_osx_parser::read_osx_system_profiler('SPDisplaysDataType', 'Resolution'));
 			$resolution = array();
@@ -424,7 +450,7 @@ class phodevi_gpu extends phodevi_device_interface
 		}
 
 		// Attempt reading available modes from xrandr
-		if(pts_client::executable_in_path('xrandr') && !phodevi::is_macosx()) // MacOSX has xrandr but currently on at least my setup will emit a Bus Error when called
+		if(pts_client::executable_in_path('xrandr') && !phodevi::is_macos()) // MacOSX has xrandr but currently on at least my setup will emit a Bus Error when called
 		{
 			$xrandr_lines = array_reverse(explode("\n", shell_exec('xrandr 2>&1')));
 
@@ -594,13 +620,13 @@ class phodevi_gpu extends phodevi_device_interface
 				}
 			}
 		}
-		else if(phodevi::is_macosx())
+		else if(phodevi::is_macos())
 		{
 			$info = phodevi_osx_parser::read_osx_system_profiler('SPDisplaysDataType', 'VRAM');
 			$info = explode(' ', $info);
 			$video_ram = $info[0];
 
-			if($info[1] == 'GB')
+			if(isset($info[1]) && $info[1] == 'GB')
 			{
 				$video_ram *= 1024;
 			}
@@ -616,7 +642,7 @@ class phodevi_gpu extends phodevi_device_interface
 		else
 		{
 			// Try reading video memoty from GLX_MESA_query_renderer output in glxinfo
-			$glxinfo_video_mem = str_replace('MB', null, phodevi_parser::glxinfo_read_line('Video memory'));
+			$glxinfo_video_mem = str_replace('MB', '', phodevi_parser::glxinfo_read_line('Video memory'));
 
 			if(is_numeric($glxinfo_video_mem) && $glxinfo_video_mem > 1)
 			{
@@ -710,8 +736,14 @@ class phodevi_gpu extends phodevi_device_interface
 		}
 		else
 		{
-			$freq_string = phodevi::read_property('gpu', 'frequency');
-			return phodevi::read_property('gpu', 'model') . ($freq_string != null ? ' (' . $freq_string . ')' : null);
+			$model = phodevi::read_property('gpu', 'model');
+			$freq_string = null;
+			if(stripos($model, 'NVIDIA') === false)
+			{
+				// 2021: NVIDIA dynamic frequency handling is too sporadic, wish there was a way to query peak freq
+				$freq_string = phodevi::read_property('gpu', 'frequency');
+			}
+			return $model . ($freq_string != null ? ' (' . $freq_string . ')' : null);
 		}
 	}
 	public static function gpu_frequency_string()
@@ -739,7 +771,7 @@ class phodevi_gpu extends phodevi_device_interface
 		$core_freq = 0;
 		$mem_freq = 0;
 
-		if(phodevi::is_nvidia_graphics() && phodevi::is_macosx() == false) // NVIDIA GPU
+		if(phodevi::is_nvidia_graphics() && phodevi::is_macos() == false) // NVIDIA GPU
 		{
 			// GPUDefault3DClockFreqs is the default and does not show under/over-clocking
 			$clock_freqs_3d = pts_strings::comma_explode(phodevi_parser::read_nvidia_extension('GPU3DClockFreqs'));
@@ -773,7 +805,7 @@ class phodevi_gpu extends phodevi_device_interface
 				$core_string = array_search('core', $performance_level);
 				if($core_string !== false && isset($performance_level[($core_string + 1)]))
 				{
-					$core_string = str_ireplace('MHz', null, $performance_level[($core_string + 1)]);
+					$core_string = str_ireplace('MHz', '', $performance_level[($core_string + 1)]);
 					if(is_numeric($core_string))
 					{
 						$core_freq = $core_string;
@@ -782,7 +814,7 @@ class phodevi_gpu extends phodevi_device_interface
 				$mem_string = array_search('memory', $performance_level);
 				if($mem_string !== false && isset($performance_level[($mem_string + 1)]))
 				{
-					$mem_string = str_ireplace('MHz', null, $performance_level[($mem_string + 1)]);
+					$mem_string = str_ireplace('MHz', '', $performance_level[($mem_string + 1)]);
 					if(is_numeric($mem_string))
 					{
 						$mem_freq = $mem_string;
@@ -814,7 +846,7 @@ class phodevi_gpu extends phodevi_device_interface
 				$core_string = array_search('core', $performance_level);
 				if($core_string !== false && isset($performance_level[($core_string + 1)]))
 				{
-					$core_string = str_ireplace('MHz', null, $performance_level[($core_string + 1)]);
+					$core_string = str_ireplace('MHz', '', $performance_level[($core_string + 1)]);
 					if(strpos($core_string, '-') !== false)
 					{
 						// to work around a range of values, e.g.
@@ -829,7 +861,7 @@ class phodevi_gpu extends phodevi_device_interface
 				$mem_string = array_search('memory', $performance_level);
 				if($mem_string !== false && isset($performance_level[($mem_string + 1)]))
 				{
-					$mem_string = str_ireplace('MHz', null, $performance_level[($mem_string + 1)]);
+					$mem_string = str_ireplace('MHz', '', $performance_level[($mem_string + 1)]);
 					if(strpos($mem_string, '-') !== false)
 					{
 						// to work around a range of values, e.g.
@@ -1035,7 +1067,7 @@ class phodevi_gpu extends phodevi_device_interface
 		$info = str_replace('(R)', '', phodevi_parser::read_glx_renderer());
 		$video_ram = phodevi::read_property('gpu', 'memory-capacity');
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$system_profiler_info = implode(' + ', phodevi_osx_parser::read_osx_system_profiler('SPDisplaysDataType', 'ChipsetModel', true));
 
@@ -1089,7 +1121,7 @@ class phodevi_gpu extends phodevi_device_interface
 				if(($x = strpos($xorg_log, '(0): Chipset: ')) !== false)
 				{
 					$xorg_log = substr($xorg_log, ($x + 14));
-					$xorg_log = str_replace(array('(R)', '"'), null, substr($xorg_log, 0, strpos($xorg_log, PHP_EOL)));
+					$xorg_log = str_replace(array('(R)', '"'), '', substr($xorg_log, 0, strpos($xorg_log, PHP_EOL)));
 
 					if(($c = strpos($xorg_log, '[')) || ($c = strpos($xorg_log, '(')))
 					{
@@ -1155,7 +1187,7 @@ class phodevi_gpu extends phodevi_device_interface
 			{
 				unset($windows_gpu[$x]);
 			}
-			$info = str_replace('(TM)', null, implode(' + ', $windows_gpu));
+			$info = str_replace('(TM)', '', implode(' + ', $windows_gpu));
 		}
 
 		if(empty($info) || strpos($info, 'Mesa ') !== false || strpos($info, 'Gallium ') !== false || strpos($info, 'DRM ') !== false)
@@ -1165,12 +1197,17 @@ class phodevi_gpu extends phodevi_device_interface
 				// to remove section like "Gallium 0.4 on AMD POLARIS"
 				$info = substr($info, $x + 4);
 			}
+			if(strpos($info, 'Intel ') !== false)
+			{
+				// Intel usually has e.g. TGL GT2 or other info within
+				$info = str_replace(array('(', ')'), '', $info);
+			}
 			if(($x = strpos($info, ' (')) !== false)
 			{
 				$info = substr($info, 0, $x);
 			}
 
-			if(phodevi::is_windows() == false)
+			if(phodevi::is_windows() == false && strpos($info, 'Intel ') === false)
 			{
 				$info_pci = phodevi_linux_parser::read_pci('VGA compatible controller', false);
 
@@ -1196,7 +1233,7 @@ class phodevi_gpu extends phodevi_device_interface
 							if(($x = strpos($xorg_log, 'Integrated Graphics Chipset: ')) !== false)
 							{
 								$xorg_log = substr($xorg_log, ($x + 29));
-								$xorg_log = str_replace(array('(R)', '"'), null, substr($xorg_log, 0, strpos($xorg_log, PHP_EOL)));
+								$xorg_log = str_replace(array('(R)', '"'), '', substr($xorg_log, 0, strpos($xorg_log, PHP_EOL)));
 
 								if(stripos($xorg_log, 'Intel') === false)
 								{
@@ -1213,7 +1250,7 @@ class phodevi_gpu extends phodevi_device_interface
 							else if(($x = strpos($xorg_log, '(0): Chipset: ')) !== false)
 							{
 								$xorg_log = substr($xorg_log, ($x + 14));
-								$xorg_log = str_replace(array('(R)', '"'), null, substr($xorg_log, 0, strpos($xorg_log, PHP_EOL)));
+								$xorg_log = str_replace(array('(R)', '"'), '', substr($xorg_log, 0, strpos($xorg_log, PHP_EOL)));
 
 								if(stripos($xorg_log, 'Intel') === false)
 								{
@@ -1304,6 +1341,23 @@ class phodevi_gpu extends phodevi_device_interface
 			}
 		}
 
+		if(empty($info) && (($nvidia_smi = pts_client::executable_in_path('nvidia-smi')) || ($nvidia_smi = pts_client::executable_in_path('nvidia-smi.exe'))))
+		{
+			// This works for some headless configurations or with Windows WSL2
+			$nvidia_smi = shell_exec($nvidia_smi . ' -L 2>&1');
+			if(($x = strpos($nvidia_smi, 'GPU 0: ')) !== false)
+			{
+				$nvidia_smi = substr($nvidia_smi, $x + 7);
+
+				if(($x = strpos($nvidia_smi, PHP_EOL)) !== false)
+				{
+					$nvidia_smi = substr($nvidia_smi, 0, $x);
+				}
+
+				$info = trim($nvidia_smi);
+			}
+		}
+
 		if(($x = strpos($info, ' (')) !== false)
 		{
 			$info = substr($info, 0, $x);
@@ -1354,9 +1408,9 @@ class phodevi_gpu extends phodevi_device_interface
 		}
 
 		$clean_phrases = array('OpenGL Engine');
-		$info = str_replace($clean_phrases, null, $info);
+		$info = str_replace($clean_phrases, '', $info);
 
-		if(!empty($info) && $video_ram > 64 && strpos($info, $video_ram) == false) // assume more than 64MB of vRAM
+		if(!empty($info) && $video_ram > 64 && strpos($info, $video_ram) == false && stripos($info, 'llvmpipe') === false) // assume more than 64MB of vRAM
 		{
 			if($video_ram < 1024)
 			{

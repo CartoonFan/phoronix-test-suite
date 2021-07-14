@@ -1,5 +1,39 @@
 # Phoronix Test Suite Release History
 
+Phoronix Test Suite 10.4
+======
+#### Release Date: 16 May 2021 | Codename: Ibestad
+* Various optimizations and enhancements
+
+Phoronix Test Suite 10.2
+======
+#### Release Date: 5 January 2021 | Codename: Harstad
+* Significantly faster Phoromatic Web UI performance
+* Improved support for macOS 11 Big Sur, Apple Silicon (Apple M1)
+* Improved tracking of per-test/configuration run-time time requirements, improved test run-time estimation
+* Support for reporting broken download mirrors to OpenBenchmarking.org
+* BSD support updates (FreeBSD, DragonFlyBSD, OpenBSD, NetBSD)
+* Full PHP 8.0 compatibility
+* Various Phodevi software/hardware detection reporting improvements
+* New modules: turbostat
+
+Phoronix Test Suite 10.0
+======
+#### Release Date: 13 October 2020 | Codename: Finnsnes
+* New version/overhaul of OpenBenchmarking.org
+* Various hardware/software detection improvements with Phodevi
+* New modules: flush_caches, test_timeout
+
+Phoronix Test Suite 9.8
+======
+#### Release Date: 9 July 2020 | Codename: Nesodden
+* Improved handling of test install failure when a new minor test profile update is available tu automatically try
+* Improved detection of OpenCL and NVIDIA CUDA presence for avoiding some test option prompts when not supported
+* Estimated test install time reporting
+* Rewritten virtual test suite implementation
+* Early PHP 8.0 support
+* Linux AMD Energy driver support in Phodevi, NVIDIA GPU detection in WSL2, other cases
+
 Phoronix Test Suite 9.6
 ======
 #### Release Date: 21 April 2020 | Codename: Nittedal

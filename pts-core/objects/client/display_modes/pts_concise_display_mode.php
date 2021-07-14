@@ -38,8 +38,8 @@ class pts_concise_display_mode implements pts_display_mode_interface
 	private $test_install_count = 0;
 
 	// Run bits
-	private $expected_trial_run_count = 0;
-	private $trial_run_count_current = 0;
+	protected $expected_trial_run_count = 0;
+	protected $trial_run_count_current = 0;
 	private $current_saved_test_identifier = null;
 	private $current_test = null;
 
@@ -71,10 +71,12 @@ class pts_concise_display_mode implements pts_display_mode_interface
 		$cache_total = 0;
 		$cache_size = 0;
 		$install_size = 0;
+		$install_time = 0;
 
 		foreach($test_install_manager->get_test_run_requests() as $test_run_request)
 		{
 			$install_size += $test_run_request->test_profile->get_environment_size();
+			$install_time += $test_run_request->test_profile->get_estimated_install_time();
 
 			foreach($test_run_request->get_download_objects() as $test_file_download)
 			{
@@ -124,6 +126,10 @@ class pts_concise_display_mode implements pts_display_mode_interface
 		{
 			echo $this->tab . $this->tab . ceil($install_size) . 'MB Of Disk Space Is Needed' . PHP_EOL;
 		}
+		if($install_time > 0)
+		{
+			echo $this->tab . $this->tab . pts_strings::format_time($install_time) . ' Estimated Install Time' . PHP_EOL;
+		}
 
 		echo PHP_EOL;
 	}
@@ -149,7 +155,7 @@ class pts_concise_display_mode implements pts_display_mode_interface
 
 			echo ' [' . $size . ' MB';
 
-			if(($avg_speed = pts_download_speed_manager::get_average_download_speed()) > 0)
+			if(($avg_speed = pts_client::get_average_download_speed()) > 0)
 			{
 				$avg_time = ($size * 1048576) / $avg_speed;
 				echo ' / ' . pts_strings::format_time($avg_time, 'SECONDS', true, 60);
@@ -193,7 +199,7 @@ class pts_concise_display_mode implements pts_display_mode_interface
 			case 'DOWNLOAD':
 				$process_string = 'Downloading';
 				$progress_prefix = 'Downloading';
-				if(($avg_speed = pts_download_speed_manager::get_average_download_speed()) > 0 && ($this_size = $pts_test_file_download->get_filesize()) > 0)
+				if(($avg_speed = pts_client::get_average_download_speed()) > 0 && ($this_size = $pts_test_file_download->get_filesize()) > 0)
 				{
 					$expected_time = $this_size / $avg_speed;
 				}
@@ -236,7 +242,7 @@ class pts_concise_display_mode implements pts_display_mode_interface
 			return;
 		}
 
-		$terminal_width = pts_client::terminal_width() > 1 ? pts_client::terminal_width() : $terminal_width;
+		$terminal_width = pts_client::terminal_width() > 1 ? pts_client::terminal_width() : 80;
 		$text_width = $terminal_width - (strlen($this->tab) * 3);
 		echo PHP_EOL . $this->tab . $this->tab . pts_client::cli_colored_text(wordwrap(($prefix_tag != null ? '[' . $prefix_tag . '] ' : null) . $message, $text_width, PHP_EOL . $this->tab . $this->tab), $text_color, true) . PHP_EOL;
 	}
@@ -335,7 +341,7 @@ class pts_concise_display_mode implements pts_display_mode_interface
 		$this->trial_run_count_current = 0;
 		$this->expected_trial_run_count = $test_result->test_profile->get_times_to_run();
 		$remaining_length = $test_run_manager->get_estimated_run_time();
-		$estimated_length = $test_result->test_profile->get_estimated_run_time();
+		$estimated_length = $test_result->get_estimated_run_time();
 		$display_table = array();
 
 
@@ -369,6 +375,15 @@ class pts_concise_display_mode implements pts_display_mode_interface
 		}
 
 		echo pts_user_io::display_text_table($display_table);
+
+		if($test_result->pre_run_message != null)
+		{
+			foreach(pts_arrays::to_array($test_result->pre_run_message) as $l)
+			{
+				echo PHP_EOL . $this->tab . pts_client::cli_just_italic($l);
+			}
+			$test_result->pre_run_message = null;
+		}
 	}
 	public function test_run_message($message_string)
 	{

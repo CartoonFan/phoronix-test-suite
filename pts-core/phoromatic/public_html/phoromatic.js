@@ -313,6 +313,11 @@ function phoromatic_test_select_update_selected_name(select_obj)
 
 	document.getElementById(select_id + "_selected").value = document.getElementById(select_id + "_name").innerHTML + ": " + select_name;
 }
+function phoromatic_test_select_update_selected_name_custom_input(in_obj)
+{
+	var select_id = in_obj.id;
+	document.getElementById(select_id + "_selected").value = document.getElementById(select_id + "_name").innerHTML + ": " + in_obj.value;
+}
 function pts_ajax_request_object()
 {
 	var request_;
@@ -369,4 +374,8 @@ function phoromatic_ajax_append_element(r, d)
 			}
 		}}
 	http[rnow].send(null);
+}
+function display_system_logs_for_result(result_file, system_id)
+{
+	window.location.href = "?logs/system/" + result_file + "/" + system_id;
 }

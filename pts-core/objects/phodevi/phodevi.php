@@ -332,6 +332,7 @@ class phodevi extends phodevi_base
 			//	'Virtualization' => (phodevi_cpu::virtualization_technology() ? phodevi_cpu::virtualization_technology() : ''),
 				'Cache Size' => phodevi::read_property('cpu', 'cache-size-string'),
 				'Microcode'=> phodevi::read_property('cpu', 'microcode-version'),
+				'Core Family' => phodevi::read_property('cpu', 'core-family-name'),
 				'Scaling Driver'=> phodevi::read_property('cpu', 'scaling-governor'),
 				),
 			'Graphics' => phodevi::read_name('gpu'),
@@ -357,6 +358,7 @@ class phodevi extends phodevi_base
 				array(
 				'File-System' => phodevi::read_property('system', 'filesystem'),
 				'Mount Options' => phodevi::read_property('disk', 'mount-options-string'),
+				//'Block Size' => phodevi::read_property('disk', 'block-size'),
 				'Disk Scheduler' => phodevi::read_property('disk', 'scheduler'),
 				'Disk Details' => phodevi::read_property('disk', 'extra-disk-details'),
 				),
@@ -618,7 +620,7 @@ class phodevi extends phodevi_base
 		// OpenGL / graphics detection
 		$graphics_detection = array('NVIDIA', array('Mesa', 'SGI'), array('AMD'));
 		$opengl_driver = phodevi::read_property('system', 'opengl-vendor') . ' ' . phodevi::read_property('system', 'opengl-driver') . ' ' . phodevi::read_property('system', 'dri-display-driver');
-		$opengl_driver = trim(str_replace('Corporation', null, $opengl_driver)); // Prevents a possible false positive for ATI being in CorporATIon
+		$opengl_driver = trim(str_replace('Corporation', '', $opengl_driver)); // Prevents a possible false positive for ATI being in CorporATIon
 
 		foreach($graphics_detection as $gpu_check)
 		{
@@ -812,6 +814,10 @@ class phodevi extends phodevi_base
 		{
 			$compatible = false;
 		}
+		if(phodevi::is_macos())
+		{
+			$compatible = true;
+		}
 
 		return $compatible;
 	}
@@ -823,11 +829,63 @@ class phodevi extends phodevi_base
 	{
 		return phodevi::is_vendor_string($product) && !pts_strings::has_in_istring($product, array('VBOX', 'QEMU', 'Virtual', 'Family', '440BX', 'VMware', ' Gen', 'Core IGP'));
 	}
+	public static function opencl_support_detected()
+	{
+		$supported = true;
+
+		if(($clinfo = pts_client::executable_in_path('clinfo')))
+		{
+			$clinfo = shell_exec($clinfo);
+			if(strpos($clinfo, 'Number of platforms                               0') !== false)
+			{
+				$supported = false;
+			}
+		}
+
+		return $supported;
+	}
+	public static function vulkan_support_detected()
+	{
+		static $supported = -1;
+
+		if($supported !== -1)
+		{
+			return $supported;
+		}
+		$supported = true;
+
+		if(($vulkaninfo = pts_client::executable_in_path('vulkaninfo 2>&1')))
+		{
+			$vulkaninfo = shell_exec($vulkaninfo);
+			if(strpos($vulkaninfo, 'Cannot create Vulkan instance') !== false)
+			{
+				$supported = false;
+			}
+			else if(strpos($vulkaninfo, 'failed with ERROR_INITIALIZATION_FAILED') !== false)
+			{
+				$supported = false;
+			}
+		}
+
+		return $supported;
+	}
 	public static function is_fake_device($str)
 	{
 		$string_check = array(
 			'Logical Volume',
 			'QEMU',
+			' KVM',
+			'KVM ',
+			'Eng Sample',
+			'Unknown',
+			' virt',
+			'virtual',
+			'svga',
+			' VM',
+			'Storage ',
+			'Aspeed',
+			'440BX',
+			'Cirrus',
 			);
 
 		foreach($string_check as $check)
@@ -836,6 +894,17 @@ class phodevi extends phodevi_base
 			{
 				return true;
 			}
+		}
+
+		$without_multiplier = $str;
+		if(($x = strpos($without_multiplier, ' x ')) !== false)
+		{
+			$without_multiplier = substr($without_multiplier, $x + 3);
+		}
+		if(!preg_match('~[0-9]+~', $without_multiplier))
+		{
+			// No numbers at all in string so probably not a real device (e.g. some Virtual "Intel" CPU or similar components generic
+			return true;
 		}
 
 		return false;
@@ -875,7 +944,7 @@ class phodevi extends phodevi_base
 	{
 		return self::$operating_systems['bsd'];
 	}
-	public static function is_macosx()
+	public static function is_macos()
 	{
 		return self::$operating_systems['macosx'];
 	}
@@ -909,7 +978,7 @@ class phodevi extends phodevi_base
 			return false;
 		}
 
-		return pts_client::read_env('DISPLAY') != false || pts_client::read_env('WAYLAND_DISPLAY') != false || phodevi::is_windows() || phodevi::is_macosx();
+		return pts_client::read_env('DISPLAY') != false || pts_client::read_env('WAYLAND_DISPLAY') != false || phodevi::is_windows() || phodevi::is_macos();
 	}
 }
 

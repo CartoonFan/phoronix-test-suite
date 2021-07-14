@@ -4,8 +4,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2019, Phoronix Media
-	Copyright (C) 2008 - 2019, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	phodevi_system.php: The PTS Device Interface object for the system software
 
 	This program is free software; you can redistribute it and/or modify
@@ -56,7 +56,9 @@ class phodevi_system extends phodevi_device_interface
 			'compiler' => new phodevi_device_property('sw_compiler', phodevi::no_caching),
 			'system-layer' => new phodevi_device_property('sw_system_layer', phodevi::no_caching),
 			'environment-variables' => new phodevi_device_property('sw_environment_variables', phodevi::std_caching),
-			'security-features' => new phodevi_device_property('sw_security_features', phodevi::std_caching)
+			'security-features' => new phodevi_device_property('sw_security_features', phodevi::std_caching),
+			'kernel-extra-details' => new phodevi_device_property('sw_kernel_extra_details', phodevi::std_caching),
+			'battery' => new phodevi_device_property('battery', phodevi::smart_caching),
 			);
 	}
 	public static function sw_username()
@@ -73,6 +75,33 @@ class phodevi_system extends phodevi_device_interface
 		}
 
 		return $username;
+	}
+	public static function sw_kernel_extra_details()
+	{
+		$extra = array();
+
+		if(phodevi::is_linux())
+		{
+			if(is_file('/sys/kernel/mm/transparent_hugepage/enabled'))
+			{
+				$thp_enabled = file_get_contents('/sys/kernel/mm/transparent_hugepage/enabled');
+				if(($x = strpos($thp_enabled, '[')) !== false)
+				{
+					$thp_enabled = substr($thp_enabled, $x + 1);
+					if(($x = strpos($thp_enabled, ']')) !== false)
+					{
+						$thp_enabled = trim(substr($thp_enabled, 0, $x));
+						if(!empty($thp_enabled))
+						{
+							$extra[] = 'Transparent Huge Pages: ' . $thp_enabled;
+						}
+					}
+				}
+
+			}
+		}
+
+		return implode(' - ', $extra);
 	}
 	public static function sw_system_layer()
 	{
@@ -140,7 +169,7 @@ class phodevi_system extends phodevi_device_interface
 		// Determine file-system type
 		$fs = null;
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$fs = phodevi_osx_parser::read_osx_system_profiler('SPSerialATADataType', 'FileSystem', false, array('MS-DOS FAT32'));
 
@@ -419,7 +448,7 @@ class phodevi_system extends phodevi_device_interface
 			{
 				$modinfo = trim(shell_exec('modinfo -F version vboxguest 2> /dev/null'));
 
-				if($modinfo != null && pts_strings::is_version(str_ireplace(array('_', 'RC', 'beta'), null, $modinfo)))
+				if($modinfo != null && pts_strings::is_version(str_ireplace(array('_', 'RC', 'beta'), '', $modinfo)))
 				{
 					$virtualized .= ' ' . $modinfo;
 				}
@@ -698,7 +727,7 @@ class phodevi_system extends phodevi_device_interface
 			$v = trim(shell_exec('pgcc --version 2>&1'));
 			$v = substr($v, strpos($v, 'pgcc ') + 5);
 			$v = substr($v, 0, strpos($v, ' '));
-			if(pts_strings::is_version(str_replace('-', null, $v)))
+			if(pts_strings::is_version(str_replace('-', '', $v)))
 			{
 				$compilers['pgcc'] .= ' ' . $v;
 			}
@@ -753,6 +782,7 @@ class phodevi_system extends phodevi_device_interface
 				// e.g. clang version 3.0 (branches/release_30 142590)
 
 				$compiler_info = substr($compiler_info, ($cv_pos + 14));
+				$compiler_info = str_replace(PHP_EOL, ' ', $compiler_info);
 				$clang_version = substr($compiler_info, 0, strpos($compiler_info, ' '));
 
 				// XXX: the below check bypass now because e.g. Ubuntu appends '-ubuntuX', etc that breaks check
@@ -808,7 +838,7 @@ class phodevi_system extends phodevi_device_interface
 				$info = substr($info, 0, strpos($info, PHP_EOL, $s));
 				$info = substr($info, (strrpos($info, ' ') + 1));
 
-				if(pts_strings::is_version(str_replace('svn', null, $info)))
+				if(pts_strings::is_version(str_replace('svn', '', $info)))
 				{
 					$compilers['llvmc'] = 'LLVM ' . $info;
 				}
@@ -818,7 +848,7 @@ class phodevi_system extends phodevi_device_interface
 		{
 			// LLVM - Low Level Virtual Machine config
 			$info = trim(shell_exec('llvm-config --version 2> /dev/null'));
-			if(pts_strings::is_version(str_replace('svn', null, $info)))
+			if(pts_strings::is_version(str_replace('svn', '', $info)))
 			{
 				$compilers['llvmc'] = 'LLVM ' . $info;
 			}
@@ -887,7 +917,7 @@ class phodevi_system extends phodevi_device_interface
 			$compilers['icc'] = 'ICC';
 		}
 
-		if(phodevi::is_macosx() && pts_client::executable_in_path('xcodebuild'))
+		if(phodevi::is_macos() && pts_client::executable_in_path('xcodebuild'))
 		{
 			$xcode = phodevi_osx_parser::read_osx_system_profiler('SPDeveloperToolsDataType', 'Xcode');
 			$xcode = substr($xcode, 0, strpos($xcode, ' '));
@@ -905,7 +935,7 @@ class phodevi_system extends phodevi_device_interface
 			$nvcc = shell_exec($nvcc . ' --version 2>&1');
 			if(($s = strpos($nvcc, 'release ')) !== false)
 			{
-				$nvcc = str_replace(array(','), null, substr($nvcc, ($s + 8)));
+				$nvcc = str_replace(array(','), '', substr($nvcc, ($s + 8)));
 				$nvcc = substr($nvcc, 0, strpos($nvcc, ' '));
 
 				if(pts_strings::is_version($nvcc))
@@ -1047,7 +1077,7 @@ class phodevi_system extends phodevi_device_interface
 	public static function sw_os_version()
 	{
 		// Returns OS version
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$os = phodevi_osx_parser::read_osx_system_profiler('SPSoftwareDataType', 'SystemVersion');
 		
@@ -1132,7 +1162,7 @@ class phodevi_system extends phodevi_device_interface
 				$vendor = substr($vendor, 0, $x);
 			}
 
-			$vendor = str_replace(array(' Software'), null, $vendor);
+			$vendor = str_replace(array(' Software'), '', $vendor);
 		}
 		else if(phodevi::is_hurd())
 		{
@@ -1231,7 +1261,7 @@ class phodevi_system extends phodevi_device_interface
 			$os = substr($os, $break_point + 1);
 		}
 		
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$os = phodevi_osx_parser::read_osx_system_profiler('SPSoftwareDataType', 'SystemVersion');
 		}
@@ -1493,7 +1523,7 @@ class phodevi_system extends phodevi_device_interface
 			}
 			if(pts_client::is_process_running('unity-system-compositor'))
 			{
-				$unity_system_comp = trim(str_replace('unity-system-compositor', null, shell_exec('unity-system-compositor --version 2>&1')));
+				$unity_system_comp = trim(str_replace('unity-system-compositor', '', shell_exec('unity-system-compositor --version 2>&1')));
 
 				if(pts_strings::is_version($unity_system_comp))
 				{
@@ -1580,12 +1610,26 @@ class phodevi_system extends phodevi_device_interface
 		}
 
 		$display_driver = phodevi::read_property('system', 'dri-display-driver');
+		$driver_version = null;
 
-		if(empty($display_driver))
+		if(empty($display_driver) || $display_driver == 'NVIDIA')
 		{
 			if(phodevi::is_nvidia_graphics() || is_file('/proc/driver/nvidia/version'))
 			{
-				$display_driver = 'nvidia';
+				$display_driver = 'NVIDIA';
+				if(($nvs_value = phodevi_parser::read_nvidia_extension('NvidiaDriverVersion')))
+				{
+					$driver_version = $nvs_value;
+				}
+				else
+				{
+					// NVIDIA's binary driver appends their driver version on the end of the OpenGL version string
+					$glxinfo = phodevi_parser::software_glxinfo_version();
+					if(($pos = strpos($glxinfo, 'NVIDIA ')) != false)
+					{
+						$driver_version = substr($glxinfo, ($pos + 7));
+					}
+				}
 			}
 			else if((phodevi::is_mesa_graphics() || phodevi::is_bsd()) && stripos(phodevi::read_property('gpu', 'model'), 'NVIDIA') !== false)
 			{
@@ -1594,21 +1638,11 @@ class phodevi_system extends phodevi_device_interface
 					// If there's DRM loaded and NVIDIA, it should be Nouveau
 					$display_driver = 'nouveau';
 				}
-				else
-				{
-					// The dead xf86-video-nv doesn't use any DRM
-					$display_driver = 'nv';
-				}
-			}
-			else
-			{
-				// Fallback to hopefully detect the module, takes the first word off the GPU string and sees if it is the module
-				// This works in at least the case of the Cirrus driver
-				$display_driver = strtolower(pts_strings::first_in_string(phodevi::read_property('gpu', 'model')));
 			}
 		}
 
-		if(!empty($display_driver))
+		// XXX: As of PTS 10.2.1, commented out due to xorg logs growing too big on recent Ubuntu/bug causing slow perf
+		if(false && !empty($display_driver))
 		{
 			$driver_version = phodevi_parser::read_xorg_module_version($display_driver . '_drv');
 
@@ -1682,7 +1716,7 @@ class phodevi_system extends phodevi_device_interface
 						{
 							// This path works for at least finding NVIDIA Tegra 2 DDX (via tegra_fb)
 							$display_driver = file_get_contents('/sys/class/graphics/fb0/name');
-							$display_driver = str_replace(array('drm', '_fb'), null, $display_driver);
+							$display_driver = str_replace(array('drm', '_fb'), '', $display_driver);
 							$driver_version = phodevi_parser::read_xorg_module_version($display_driver . '_drv');
 						}
 						break;
@@ -1707,11 +1741,10 @@ class phodevi_system extends phodevi_device_interface
 					}
 				}
 			}
-
-			if(!empty($driver_version) && $with_version && $driver_version != '0.0.0')
-			{
-				$display_driver .= ' ' . $driver_version;
-			}
+		}
+		if(!empty($driver_version) && $with_version && $driver_version != '0.0.0')
+		{
+			$display_driver .= ' ' . $driver_version;
 		}
 
 		return $display_driver;
@@ -1826,7 +1859,7 @@ class phodevi_system extends phodevi_device_interface
 		{
 			$info = shell_exec('glxinfo 2>&1 | grep vendor');
 
-			if(($pos = strpos($info, 'OpenGL vendor string:')) !== false)
+			if($info && ($pos = strpos($info, 'OpenGL vendor string:')) !== false)
 			{
 				$info = substr($info, $pos + 22);
 				$info = trim(substr($info, 0, strpos($info, "\n")));
@@ -1973,16 +2006,6 @@ class phodevi_system extends phodevi_device_interface
 		{
 			$dri_driver = 'nvidia';
 		}
-		else if(is_file('/proc/dri/0/name'))
-		{
-			$driver_info = file_get_contents('/proc/dri/0/name');
-			$dri_driver = substr($driver_info, 0, strpos($driver_info, ' '));
-
-			if(in_array($dri_driver, array('i915', 'i965')))
-			{
-				$dri_driver = 'intel';
-			}
-		}
 		else if(is_file('/sys/class/drm/card0/device/vendor'))
 		{
 			$vendor_id = pts_file_io::file_get_contents('/sys/class/drm/card0/device/vendor');
@@ -2072,6 +2095,25 @@ class phodevi_system extends phodevi_device_interface
 		}
 
 		return $wine_version;
+	}
+	public static function battery()
+	{
+		$batteries = array();
+		if(phodevi::is_linux())
+		{
+			foreach(pts_file_io::glob('/sys/class/power_supply/BAT*/model_name') as $bat_path)
+			{
+				$bat_model = pts_file_io::file_get_contents($bat_path);
+				$bat_dir = dirname($bat_path);
+				$bat_manufacturer = is_file($bat_dir . '/manufacturer') ? pts_file_io::file_get_contents($bat_dir . '/manufacturer') : null;
+				if(!empty($bat_model))
+				{
+					$batteries[] = trim($bat_manufacturer . ' ' . $bat_model);
+				}
+			}
+		}
+
+		return implode(' + ', $batteries);
 	}
 }
 

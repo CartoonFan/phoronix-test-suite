@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -30,16 +30,25 @@ class pts_test_profile_parser
 	protected $block_test_extension_support = false;
 	private $file_location = false;
 	public $no_fallbacks_on_null = false;
+	protected static $xml_file_cache;
 
 	public function __construct($read = null, $normal_init = true)
 	{
+		$original_read = $read;
 		$this->overrides = array();
 		$this->tp_extends = null;
 
-		if($normal_init == false)
+		if($normal_init == false || $read == null)
 		{
 			$this->identifier = $read;
 			return;
+		}
+		if(isset(self::$xml_file_cache[$read]))
+		{
+			// Found in cache so can avoid extra work below...
+			$this->identifier = $read;
+			$this->file_location = $read;
+			$this->xml = &self::$xml_file_cache[$this->file_location];
 		}
 
 		if(!isset($read[200]) && strpos($read, '<?xml version="1.0"?>') === false)
@@ -87,10 +96,20 @@ class pts_test_profile_parser
 			$xml_options = LIBXML_COMPACT | LIBXML_PARSEHUGE;
 		//}
 
-		if(is_file($read))
+		if(isset(self::$xml_file_cache[$read]))
 		{
 			$this->file_location = $read;
-			$this->xml = simplexml_load_file($read, 'SimpleXMLElement', $xml_options);
+			$this->xml = &self::$xml_file_cache[$this->file_location];
+		}
+		else if($read && is_file($read))
+		{
+			$this->file_location = $read;
+			self::$xml_file_cache[$this->file_location] = simplexml_load_file($read, 'SimpleXMLElement', $xml_options);
+			if($read != $original_read && !isset(self::$xml_file_cache[$original_read]))
+			{
+				self::$xml_file_cache[$original_read] = &self::$xml_file_cache[$this->file_location];
+			}
+			$this->xml = &self::$xml_file_cache[$this->file_location];
 		}
 		else
 		{
@@ -125,6 +144,22 @@ class pts_test_profile_parser
 	public function xs($xpath, &$value)
 	{
 		$this->overrides[$xpath] = $value;
+	}
+	public function get_dependency_names()
+	{
+		$dependency_names = array();
+		$exdep_generic_parser = new pts_exdep_generic_parser();
+
+		foreach($this->get_external_dependencies() as $dependency)
+		{
+			if($exdep_generic_parser->is_package($dependency))
+			{
+				$package_data = $exdep_generic_parser->get_package_data($dependency);
+				$dependency_names[] = $package_data['title'];
+			}
+		}
+
+		return $dependency_names;
 	}
 	public function xg($xpath, $default_on_null = null)
 	{
@@ -180,7 +215,7 @@ class pts_test_profile_parser
 	{
 		$identifier = $this->identifier;
 
-		if($bind_version == false && ($c = strrpos($identifier, '-')))
+		if($bind_version == false && $identifier != null && ($c = strrpos($identifier, '-')))
 		{
 			if(pts_strings::is_version(substr($identifier, ($c + 1))))
 			{
@@ -221,6 +256,10 @@ class pts_test_profile_parser
 	public function get_project_url()
 	{
 		return $this->xg('TestProfile/ProjectURL');
+	}
+	public function get_repo_url()
+	{
+		return $this->xg('TestProfile/RepositoryURL');
 	}
 	public function get_description()
 	{
@@ -375,9 +414,20 @@ class pts_test_profile_parser
 	{
 		return pts_strings::string_bool($this->xg('TestProfile/RequiresRoot', 'FALSE'));
 	}
+	public function is_root_install_required()
+	{
+		return pts_strings::string_bool($this->xg('TestProfile/RequiresRootInstall', 'FALSE'));
+	}
 	public function is_display_required()
 	{
-		return pts_strings::string_bool($this->xg('TestProfile/RequiresDisplay', 'FALSE')) || ($this->xg('TestProfile/RequiresDisplay') == null && $this->get_test_hardware_type() == 'Graphics');
+		return pts_strings::string_bool($this->xg('TestProfile/RequiresDisplay', 'FALSE')) || ($this->xg('TestProfile/RequiresDisplay') == null && $this->get_test_hardware_type() == 'Graphics' && !$this->is_gpu_compute_test());
+	}
+	protected function is_gpu_compute_test()
+	{
+		$internal_tags = $this->get_internal_tags();
+		$external_dependencies = $this->get_external_dependencies();
+
+		return in_array('OpenCL', $internal_tags) || in_array('CUDA', $internal_tags) || in_array('opencl', $external_dependencies);
 	}
 	public function is_network_required()
 	{
@@ -386,6 +436,10 @@ class pts_test_profile_parser
 	public function is_internet_required()
 	{
 		return pts_strings::string_bool($this->xg('TestProfile/RequiresInternet', 'FALSE'));
+	}
+	public function is_internet_required_for_install()
+	{
+		return pts_strings::string_bool($this->xg('TestProfile/InstallRequiresInternet', 'FALSE'));
 	}
 	public function allow_cache_share()
 	{
@@ -447,7 +501,11 @@ class pts_test_profile_parser
 	{
 		return $this->get_test_option_objects(false);
 	}
-	public function get_test_option_objects($auto_process = true)
+	public function has_test_options()
+	{
+		return $this->xml && $this->xml->TestSettings && $this->xml->TestSettings->Option;
+	}
+	public function get_test_option_objects($auto_process = true, &$error = null, $validate_options_now = true)
 	{
 		$test_options = array();
 
@@ -471,7 +529,12 @@ class pts_test_profile_parser
 
 				if($auto_process)
 				{
-					pts_test_run_options::auto_process_test_option($this, $option->Identifier, $names, $values, $messages);
+					$auto_process_error_msg = null;
+					$auto_process_error = pts_test_run_options::auto_process_test_option($this, $option->Identifier, $names, $values, $messages, $auto_process_error_msg, $validate_options_now);
+					if($auto_process_error == -1)
+					{
+						$error = $auto_process_error_msg;
+					}
 				}
 
 				$user_option = new pts_test_option($option->Identifier->__toString(), $option->DisplayName->__toString(), $option->Message->__toString());

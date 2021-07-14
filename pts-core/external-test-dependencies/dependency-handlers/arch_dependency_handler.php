@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2015 - 2018, Phoronix Media
-	Copyright (C) 2015 - 2018, Michael Larabel
+	Copyright (C) 2015 - 2020, Phoronix Media
+	Copyright (C) 2015 - 2020, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -70,6 +70,14 @@ class arch_dependency_handler implements pts_dependency_handler
 						}
 					}
 				}
+			}
+		}
+		$ignore_pkgs = array('extra/bash-completion');
+		foreach($packages_needed as $i => $pkg_check)
+		{
+			if($pkg_check == null || in_array($pkg_check, $ignore_pkgs))
+			{
+				unset($packages_needed[$i]);
 			}
 		}
 		return $packages_needed;

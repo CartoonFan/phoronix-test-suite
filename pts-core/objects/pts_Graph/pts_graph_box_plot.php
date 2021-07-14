@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2019, Phoronix Media
-	Copyright (C) 2008 - 2019, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -87,18 +87,17 @@ class pts_graph_box_plot extends pts_graph_horizontal_bars
 				$px_bound_bottom = $px_bound_top + $bar_height;
 				$middle_of_bar = $px_bound_top + ($bar_height / 2);
 
+				// sort values now as optimization rather than in find_percentile
+				sort($values, SORT_NUMERIC);
+
 				$avg_value = round(pts_math::arithmetic_mean($values), 2);
-				$whisker_bottom = pts_math::find_percentile($values, 0.02);
-				$whisker_top = pts_math::find_percentile($values, 0.98);
-				$median = pts_math::find_percentile($values, 0.5);
+				$whisker_bottom = pts_math::find_percentile($values, 0.02, true);
+				$whisker_top = pts_math::find_percentile($values, 0.98, true);
+				$median = pts_math::find_percentile($values, 0.5, true);
 
 				$unique_values = array_unique($values);
 				$min_value = round(min($unique_values), 2);
 				$max_value = round(max($unique_values), 2);
-
-				$stat_value = 'Min: ' . $min_value . ' / Avg: ' . $avg_value . ' / Max: ' . $max_value;
-				$title_tooltip = $stat_value;
-				//$title_tooltip = $buffer_item->get_result_identifier() . ': ' . $stat_value;
 
 				$value_end_left = $this->i['left_start'] + max(1, round(($whisker_bottom / $this->i['graph_max_value']) * $work_area_width));
 				$value_end_right = $this->i['left_start'] + round(($whisker_top / $this->i['graph_max_value']) * $work_area_width);
@@ -119,14 +118,14 @@ class pts_graph_box_plot extends pts_graph_horizontal_bars
 				$this->svg_dom->add_element('line', array('x1' => $value_end_left, 'y1' => $px_bound_top, 'x2' => $value_end_left, 'y2' => $px_bound_bottom), $g_lines);
 				$this->svg_dom->add_element('line', array('x1' => $value_end_right, 'y1' => $px_bound_top, 'x2' => $value_end_right, 'y2' => $px_bound_bottom), $g_lines);
 
-				$box_left = $this->i['left_start'] + round((pts_math::find_percentile($values, 0.25) / $this->i['graph_max_value']) * $work_area_width);
+				$box_left = $this->i['left_start'] + round((pts_math::find_percentile($values, 0.25, true) / $this->i['graph_max_value']) * $work_area_width);
 				$box_middle = $this->i['left_start'] + round(($median / $this->i['graph_max_value']) * $work_area_width);
-				$box_right = $this->i['left_start'] + round((pts_math::find_percentile($values, 0.75) / $this->i['graph_max_value']) * $work_area_width);
+				$box_right = $this->i['left_start'] + round((pts_math::find_percentile($values, 0.75, true) / $this->i['graph_max_value']) * $work_area_width);
 
-				$this->svg_dom->add_element('rect', array('x' => $box_left, 'y' => $px_bound_top, 'width' => ($box_right - $box_left), 'height' => $bar_height, 'fill' => $box_color, 'xlink:title' => $title_tooltip), $g_bars);
+				$this->svg_dom->add_element('rect', array('x' => $box_left, 'y' => $px_bound_top, 'width' => ($box_right - $box_left), 'height' => $bar_height, 'fill' => $box_color), $g_bars);
 				$this->svg_dom->add_element('line', array('x1' => $box_middle, 'y1' => $px_bound_top, 'x2' => $box_middle, 'y2' => $px_bound_bottom), $g_overtop);
 
-				$this->svg_dom->add_text_element($stat_value, array('x' => ($this->i['left_start'] - 5), 'y' => ceil($px_bound_top + ($bar_height * 0.8) + 6)), $g_text);
+				$this->svg_dom->add_text_element('Min: ' . $min_value . ' / Avg: ' . $avg_value . ' / Max: ' . $max_value, array('x' => ($this->i['left_start'] - 5), 'y' => ceil($px_bound_top + ($bar_height * 0.8) + 6)), $g_text);
 
 				foreach($unique_values as &$val)
 				{
@@ -147,7 +146,7 @@ class pts_graph_box_plot extends pts_graph_horizontal_bars
 		$longest_sub_identifier_width = self::text_string_width('Min: ' . $this->i['graph_max_value'] . ' / Avg: XX / Max: ' . $this->i['graph_max_value'], $this->i['identifier_size']);
 		$this->i['left_start'] = max($this->i['left_start'], $longest_sub_identifier_width);
 	}
-	protected function maximum_graph_value()
+	protected function maximum_graph_value($v = -1)
 	{
 		$max = 0;
 		foreach($this->test_result->test_result_buffer->buffer_items as &$buffer_item)

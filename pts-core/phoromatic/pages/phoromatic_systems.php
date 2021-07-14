@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2015, Phoronix Media
-	Copyright (C) 2008 - 2015, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -199,9 +199,9 @@ class phoromatic_systems implements pts_webui_interface
 
 					if($row['CoreVersion'] >= 5730)
 					{
-						$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post"><input type="hidden" name="tick_thread_reboot" value="1" /><input type="submit" value="Reboot System" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and connected to the Phoromatic Server, this will send a message to the system to issue a reboot -- in case the system is hung on a test or you wish to otherwise manually reboot the server. This feature was added with Phoronix Test Suite 5.8.</p>';
+						$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post"><input type="hidden" name="tick_thread_reboot" value="1" /><input type="submit" value="Reboot System" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and connected to the Phoromatic Server, this will send a message to the system to issue a reboot -- in case the system is hung on a test or you wish to otherwise manually reboot the server.</p>';
 
-						$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post"><input type="hidden" name="tick_thread_halt" value="1" /><input type="submit" value="Halt Testing" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and running a test/benchmark via the Phoromatic Server, this will tell the system to halt the testing prematurely as soon as the currently-active test has finished. The results successfully ran will then be uploaded to the Phoromatic Server. This feature was added with Phoronix Test Suite 5.8.</p>';
+						$main .= '<p><form action="' . $_SERVER['REQUEST_URI'] . '" name="update_groups" method="post"><input type="hidden" name="tick_thread_halt" value="1" /><input type="submit" value="Halt Testing" style="float: left; margin: 0 20px 5px 0;" /></form> If the system is currently powered up and running a test/benchmark via the Phoromatic Server, this will tell the system to halt the testing prematurely as soon as the currently-active test has finished. The results successfully ran will then be uploaded to the Phoromatic Server.</p>';
 					}
 				}
 
@@ -234,6 +234,46 @@ class phoromatic_systems implements pts_webui_interface
 				$main .= pts_webui::r2d_array_to_table($components) . '</div><div style="float: left; width: 50%;">';
 				$components = pts_result_file_analyzer::system_component_string_to_array($row['Software']);
 				$main .= pts_webui::r2d_array_to_table($components) . '</div>';
+
+				if(!empty($row['SystemProperties']))
+				{
+					$properties = json_decode($row['SystemProperties'], true);
+					$main .= '<blockquote style="max-height: 440px; overflow: scroll; clear: both;">';
+					foreach($properties as $component => $component_properties)
+					{
+						$main .= '<strong>' . strtoupper($component) . '</strong><br />';
+						foreach($component_properties as $property => $value)
+						{
+							$main .= '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . $property . ' = ';
+
+							if(is_array($value))
+							{
+								foreach($value as $si => $sv)
+								{
+									if(is_array($sv))
+									{
+										foreach($sv as $ssi => $ssv)
+										{
+											$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . $ssi . ' = ' . $ssv;
+										}
+										$main .= '<br />';
+									}
+									else
+									{
+										$main .= '<br />' . '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' . $sv . ' = ' . $sv . PHP_EOL;
+									}
+									//echo PHP_EOL;
+								}
+							}
+							else
+							{
+								$main .= $value . '<br />';
+							}
+						}
+						$main .= '<br />';
+					}
+					$main .= '</blockquote>';
+				}
 
 				$system_path = phoromatic_server::phoromatic_account_system_path($_SESSION['AccountID'], $row['SystemID']);
 				$main .= '<hr />';
@@ -454,7 +494,7 @@ class phoromatic_systems implements pts_webui_interface
 				$result = $stmt->execute();
 				while($row = $result->fetchArray())
 				{
-					$revised_groups = str_replace('#' . $_POST['remove_group'] . '#', null, $row['Groups']);
+					$revised_groups = str_replace('#' . $_POST['remove_group'] . '#', '', $row['Groups']);
 
 					$stmt1 = phoromatic_server::$db->prepare('UPDATE phoromatic_systems SET Groups = :new_groups WHERE AccountID = :account_id AND SystemID = :system_id');
 					$stmt1->bindValue(':account_id', $_SESSION['AccountID']);

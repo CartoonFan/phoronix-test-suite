@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2019, Phoronix Media
-	Copyright (C) 2008 - 2019, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	phodevi_disk.php: The PTS Device Interface object for the system disk(s)
 
 	This program is free software; you can redistribute it and/or modify
@@ -30,6 +30,8 @@ class phodevi_disk extends phodevi_device_interface
 			'scheduler' => new phodevi_device_property('hdd_scheduler', phodevi::no_caching),
 			'mount-options' => new phodevi_device_property('proc_mount_options', phodevi::no_caching),
 			'mount-options-string' => new phodevi_device_property('proc_mount_options_string', phodevi::no_caching),
+			'device-providing-storage' => new phodevi_device_property('device_providing_storage', phodevi::std_caching),
+			'block-size' => new phodevi_device_property('block_size', phodevi::std_caching),
 			'extra-disk-details' => new phodevi_device_property('extra_disk_details', phodevi::no_caching)
 			);
 	}
@@ -90,6 +92,46 @@ class phodevi_disk extends phodevi_device_interface
 
 		return $mount_options;
 	}
+	public static function block_size()
+	{
+		$path = PTS_IS_CLIENT ? pts_client::test_install_root_path() : '.';
+		$block_size = -1;
+		if(PTS_IS_CLIENT && pts_client::executable_in_path('stat') && !phodevi::is_windows())
+		{
+			$stat = trim(shell_exec('stat -f -c %S ' . $path));
+
+			if(is_numeric($stat) && $stat > 0)
+			{
+				$block_size = $stat;
+			}
+		}
+		else if(phodevi::is_windows())
+		{
+			$wmi = shell_exec('powershell "Get-WmiObject -Class Win32_Volume | Select-Object DriveLetter, BlockSize"');
+			if(($x = strpos($wmi, 'C:')) !== false)
+			{
+				$wmi = substr($wmi, ($x + 3));
+				$wmi = trim(substr($wmi, 0, strpos($wmi, "\n")));
+				if(is_numeric($wmi))
+				{
+					$block_size = $wmi;
+				}
+			}
+		}
+
+		return $block_size;
+	}
+	public static function device_providing_storage($mount_point = null, $mounts = null)
+	{
+		$mo = phodevi::read_property('disk', 'mount-options');
+
+		if(isset($mo['device']))
+		{
+			return $mo['device'];
+		}
+
+		return null;
+	}
 	public static function proc_mount_options_string($mount_point = null, $mounts = null)
 	{
 		$mo = phodevi::read_property('disk', 'mount-options');
@@ -110,7 +152,7 @@ class phodevi_disk extends phodevi_device_interface
 	{
 		$disks = array();
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			// TODO: Support reading non-SATA drives and more than one drive
 			$capacity = phodevi_osx_parser::read_osx_system_profiler('SPSerialATADataType', 'Capacity');
@@ -192,7 +234,7 @@ class phodevi_disk extends phodevi_device_interface
 					if(substr($line, 0, 1) == '<' && ($model_end = strpos($line, '>')) !== false && strpos($line, 'DVD') === false && strpos($line, 'ATAPI') === false && strpos($line, ' Console') === false)
 					{
 						$disk = self::prepend_disk_vendor(substr($line, 1, ($model_end - 1)));
-						$disk = trim(str_replace(array('SATA'), null, $disk));
+						$disk = trim(str_replace(array('SATA'), '', $disk));
 						array_push($disks, $disk);
 					}
 				}
@@ -268,7 +310,7 @@ class phodevi_disk extends phodevi_device_interface
 			for($i = 0; $i < count($models) && $i < count($size); $i++)
 			{
 				$s = $size[$i] / 1073741824;
-				$models[$i] = round($s) . 'GB ' . str_replace(array(' Device'), null, $models[$i]);
+				$models[$i] = round($s) . 'GB ' . str_replace(array(' Device'), '', $models[$i]);
 			}
 			$disks = $models;
 		}
@@ -299,8 +341,15 @@ class phodevi_disk extends phodevi_device_interface
 
 		return $disks;
 	}
-	protected static function prepend_disk_vendor($disk_model)
+	public static function prepend_disk_vendor($disk_model)
 	{
+		$disk_size_prepended = null;
+		if(($s = strpos($disk_model, ' ')) !== false && ($gb = strpos($disk_model, 'GB')) !== false && $gb < $s)
+		{
+			$disk_size_prepended = substr($disk_model, 0, $s);
+			$disk_model = substr($disk_model, $s + 1);
+		}
+
 		if(isset($disk_model[4]))
 		{
 			$disk_manufacturer = null;
@@ -343,15 +392,69 @@ class phodevi_disk extends phodevi_device_interface
 						$disk_manufacturer = 'Seagate';
 					}
 					break;
+				case 'M4':
+					if($third_char == '-')
+					{
+						$disk_manufacturer = 'Crucial';
+					}
+					break;
+				case 'HF':
+					if($third_char == 'S')
+					{
+						$disk_manufacturer = 'SK hynix';
+					}
+					break;
+				case 'SM':
+					if($third_char == 'C')
+					{
+						$disk_manufacturer = 'Supermicro';
+					}
+					break;
 			}
+
+			// OCZ SSDs aren't spaced
+			$disk_model = str_replace('OCZ-', 'OCZ ', $disk_model);
+			$disk_model = str_replace('TOSHIBA-', 'TOSHIBA ', $disk_model);
+			$disk_model = str_replace('Crucial_', 'Crucial ', $disk_model);
+			$disk_model = str_ireplace('SKHynix_', 'SK hynix ', $disk_model);
+
+			if(($x = strpos($disk_model, ' ')) != false)
+			{
+				$first_word = substr($disk_model, 0, $x);
+				switch($first_word)
+				{
+					case 'Force':
+					case 'Voyager':
+						$disk_manufacturer = 'Corsair';
+						break;
+				}
+			}
+
 
 			if($disk_manufacturer != null && strpos($disk_model, $disk_manufacturer) === false)
 			{
 				$disk_model = $disk_manufacturer . ' ' . $disk_model;
 			}
 
-			// OCZ SSDs aren't spaced
-			$disk_model = str_replace('OCZ-', 'OCZ ', $disk_model);
+			if(substr($disk_model, 0, 3) == 'SSD' && strpos($disk_model, ' ') === false  && strpos($disk_model, '-') === false)
+			{
+				// For strings with INTEL already present, Intel seems to report it as INTEL
+				$disk_model = 'INTEL ' . $disk_model;
+			}
+		}
+
+		foreach(array('Kioxia ', 'Toshiba ', 'SK hynix ') as $brand)
+		{
+			if(($k = stripos($disk_model . ' ', $brand)) !== false && $k > 0)
+			{
+				$disk_model = trim($brand . str_ireplace($brand, '', $disk_model . ' '));
+				break;
+			}
+		}
+
+		if($disk_size_prepended != null)
+		{
+			$disk_model = $disk_size_prepended . ' ' . $disk_model;
 		}
 
 		return $disk_model;
@@ -415,7 +518,7 @@ class phodevi_disk extends phodevi_device_interface
 			return null;
 		}
 		$mount_point = $device['mount-point'];
-		$extra_details = null;
+		$extra_details = array();
 
 		if(strtolower($device['file-system']) == 'btrfs' && pts_client::executable_in_path('btrfs'))
 		{
@@ -427,7 +530,7 @@ class phodevi_disk extends phodevi_device_interface
 
 				if(strpos($btrfs_fi_df, 'RAID') !== false)
 				{
-					$extra_details = $btrfs_fi_df;
+					$extra_details[] = $btrfs_fi_df;
 				}
 			}
 		}
@@ -438,7 +541,7 @@ class phodevi_disk extends phodevi_device_interface
 			$md = substr($md, 0, strpos($md, PHP_EOL));
 			if(($x = strpos($md, 'active')) !== false)
 			{
-				$extra_details = trim(substr($md, $x + 7));
+				$extra_details[] = trim(substr($md, $x + 7));
 			}
 		}
 		if($extra_details == null && strpos($device['device'], 'bcache') !== false)
@@ -453,13 +556,18 @@ class phodevi_disk extends phodevi_device_interface
 					$cache_mode = substr($cache_mode, $x + 1);
 					$cache_mode = substr($cache_mode, 0, strpos($cache_mode, ']'));
 
-					$extra_details = trim('Bcache ' . $cache_mode);
+					$extra_details[] = trim('Bcache ' . $cache_mode);
 				}
 			}
 		}
 
+		if(($bs = phodevi::read_property('disk', 'block-size')) > 0)
+		{
+			$extra_details[] = 'Block Size: ' . $bs;
+		}
 
-		return $extra_details;
+
+		return implode(' - ', $extra_details);
 	}
 }
 

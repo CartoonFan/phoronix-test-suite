@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2020, Phoronix Media
-	Copyright (C) 2008 - 2020, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 	phodevi_monitor.php: The PTS Device Interface object for the display monitor
 
 	This program is free software; you can redistribute it and/or modify
@@ -36,7 +36,7 @@ class phodevi_monitor extends phodevi_device_interface
 	{
 		$monitor = array();
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			$system_profiler = shell_exec('system_profiler SPDisplaysDataType 2>&1');
 			$system_profiler = substr($system_profiler, strrpos($system_profiler, 'Displays:'));
@@ -50,6 +50,14 @@ class phodevi_monitor extends phodevi_device_interface
 			else
 			{
 				$monitor = array($monitor);
+			}
+		}
+		else if(phodevi::is_windows())
+		{
+			$windows_monitor = trim(shell_exec('powershell "$((Get-WmiObject WmiMonitorID -Namespace root\wmi) | %{ $Name = $($_.UserFriendlyName -notmatch 0 | ForEach{[char]$_}) -join \"\"; Write-Output $Name }) -join \";\""'));
+			if(strpos($windows_monitor, ':') === false)
+			{
+				$monitor[] = $windows_monitor;
 			}
 		}
 		else if(phodevi::is_nvidia_graphics() && isset(phodevi::$vfs->xorg_log))

@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2008 - 2018, Phoronix Media
-	Copyright (C) 2008 - 2018, Michael Larabel
+	Copyright (C) 2008 - 2021, Phoronix Media
+	Copyright (C) 2008 - 2021, Michael Larabel
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -42,6 +42,11 @@ class pts_file_io
 		// Compared to the normal PHP glob, don't return false when no files are there, but return an empty array
 		$r = glob($pattern, $flags);
 		return is_array($r) ? $r : array();
+	}
+	public static function file_get_contents_if_exists($filename, $flags = 0, $context = null)
+	{
+		// Compared to the normal PHP file_get_contents, trim the file as a string when acquired
+		return is_file($filename) ? trim(file_get_contents($filename, $flags, $context)) : false;
 	}
 	public static function file_get_contents($filename, $flags = 0, $context = null)
 	{
@@ -149,7 +154,7 @@ class pts_file_io
 
 		return $success;
 	}
-	public static function recursively_find_files_in_directory($dir, &$found_files, $file_extension = null)
+	public static function recursively_find_files_in_directory($dir, &$found_files, $file_extension = null, $skip_directories = false)
 	{
 		$tree = glob(rtrim($dir, '/') . '/*');
 		if(is_array($tree))
@@ -158,6 +163,10 @@ class pts_file_io
 			{
 				if(is_dir($file))
 				{
+					if($skip_directories && in_array(basename($file), $skip_directories))
+					{
+						continue;
+					}
 					self::recursively_find_files_in_directory($file, $found_files, $file_extension);
 				}
 				else if(is_file($file) && ($file_extension == null || substr($file, 0 - strlen($file_extension)) == $file_extension))
@@ -166,6 +175,31 @@ class pts_file_io
 				}
 			}
 		}
+	}
+	public static function is_text_file($to_read)
+	{
+		$is_text_file = false;
+
+		if(is_file($to_read))
+		{
+			// Surprisingly some systems don't have mine_content_type()
+			if(function_exists('mime_content_type'))
+			{
+				$is_text_file = mime_content_type($to_read) == 'text/plain';
+			}
+			else if(function_exists('finfo_file'))
+			{
+				$finfo = finfo_open(FILEINFO_MIME_TYPE);
+				$is_text_file = strpos(finfo_file($finfo, $to_read), 'text') !== false;
+			}
+			else
+			{
+				$is_text_file = pts_strings::is_text_string(file_get_contents($to_read));
+			}
+			// else the PHP install is rather hopeless...
+		}
+
+		return $is_text_file;
 	}
 }
 

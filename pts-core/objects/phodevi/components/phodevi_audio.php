@@ -3,8 +3,8 @@
 /*
 	Phoronix Test Suite
 	URLs: http://www.phoronix.com, http://www.phoronix-test-suite.com/
-	Copyright (C) 2010 - 2018, Phoronix Media
-	Copyright (C) 2010 - 2018, Michael Larabel
+	Copyright (C) 2010 - 2021, Phoronix Media
+	Copyright (C) 2010 - 2021, Michael Larabel
 	phodevi_audio.php: The PTS Device Interface object for audio / sound cards
 
 	This program is free software; you can redistribute it and/or modify
@@ -33,7 +33,7 @@ class phodevi_audio extends phodevi_device_interface
 	{
 		$audio = null;
 
-		if(phodevi::is_macosx())
+		if(phodevi::is_macos())
 		{
 			// TODO: implement
 		}
@@ -51,7 +51,21 @@ class phodevi_audio extends phodevi_device_interface
 		}
 		else if(phodevi::is_windows())
 		{
-			// TODO: implement
+			$win_sound = array();
+			$win32_sounddevice = shell_exec('powershell "(Get-WMIObject -Class win32_sounddevice | Select Name)"');
+			if(($x = strpos($win32_sounddevice, '----')) !== false)
+			{
+				$win32_sounddevice = trim(substr($win32_sounddevice, $x + 4));
+				foreach(explode("\n", $win32_sounddevice) as $sd)
+				{
+					if(!empty($sd))
+					{
+						$win_sound[] = $sd;
+					}
+				}
+			}
+			$win_sound = array_unique($win_sound);
+			$audio = implode(' + ', $win_sound);
 		}
 		else if(phodevi::is_linux())
 		{
